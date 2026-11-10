@@ -1,0 +1,240 @@
+=== Cell 7 Outputs (1 outputs) ===
+  [stream stdout]
+models/gemini-2.5-flash
+models/gemini-2.5-pro
+models/gemini-2.5-flash-preview-tts
+models/gemini-2.5-pro-preview-tts
+models/gemma-4-26b-a4b-it
+models/gemma-4-31b-it
+models/gemini-flash-latest
+models/gemini-flash-lite-latest
+models/gemini-pro-latest
+models/gemini-2.5-flash-lite
+models/gemini-2.5-flash-image
+models/gemini-3-flash-preview
+models/gemini-3.1-pro-preview
+models/gemini-3.1-pro-preview-customtools
+models/gemini-3.1-flash-lite-preview
+models/gemini-3.1-flash-lite
+models/gemini-3-pro-image-preview
+models/gemini-3-pro-image
+models/nano-banana-pro-preview
+models/gemini-3.1-flash-image-preview
+models/gemini-3.1-flash-image
+models/gemini-3.1-flash-lite-image
+models/gemini-nano-banana-2.1
+models/gemini-3.5-flash
+models/gemini-3.5-flash-lite
+models/gemini-omni-flash-preview
+models/gemini-omni-1.1-flash
+models/gemini-omni-1.2-flash
+models/gemini-3.5-transcribe
+models/gemini-3.6-flash
+models/gemini-3.7-flash
+models/gemini-3.8-flash
+models/gemini-4-argon
+models/lyria-3-clip-preview
+models/lyria-3-pro-preview
+models/lyria-3.5
+models/gemini-3.1-flash-tts-preview
+models/gemini-3.8-flash-tts
+models/gemini-3.8-flash-lite-tts
+models/gemini-robotics-er-2-preview
+models/gemini-2.5-computer-use-preview-10-2025
+models/antigravity-preview-05-2026
+models/antigravity-preview-09-2026
+models/antigravity-preview-latest
+models/deep-research-max-preview-04-2026
+models/deep-research-preview-04-2026
+models/deep-research-pro-preview-12-2025
+models/gemini-embedding-001
+models/gemini-embedding-2-preview
+models/gemini-embedding-2
+models/aqa
+models/gemini-3.5-transcribe-live
+models/gemini-2.5-flash-native-audio-latest
+models/gemini-2.5-flash-native-audio-preview-09-2025
+models/gemini-2.5-flash-native-audio-preview-12-2025
+models/gemini-3.1-flash-live-preview
+models/gemini-3.8-live
+models/gemini-3.8-live-extended-thinking
+models/gemini-robotics-er-2-streaming-preview
+models/gemini-3.5-live-translate-preview
+models/lyria-realtime-exp
+
+=== Cell 8 Outputs (1 outputs) ===
+  [execute_result] keys=['text/plain'] non-img=['text/plain'] text=<google.genai.pagers.Pager at 0x198e31bb3e0>
+=== Cell 9 Outputs (1 outputs) ===
+  [stream stdout]
+['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-preview-tts', 'gemini-2.5-pro-preview-tts', 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash-image', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'gemini-3.1-pro-preview-customtools', 'gemini-3.1-flash-lite-preview', 'gemini-3.1-flash-lite', 'gemini-3-pro-image-preview', 'gemini-3-pro-image', 'gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-omni-flash-preview', 'gemini-omni-1.1-flash', 'gemini-omni-1.2-flash', 'gemini-3.5-transcribe', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.1-flash-tts-preview', 'gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts', 'gemini-robotics-er-2-preview', 'gemini-2.5-computer-use-preview-10-2025', 'gemini-3.5-transcribe-live', 'gemini-2.5-flash-native-audio-latest', 'gemini-2.5-flash-native-audio-preview-09-2025', 'gemini-2.5-flash-native-audio-preview-12-2025', 'gemini-3.1-flash-live-preview', 'gemini-3.8-live', 'gemini-3.8-live-extended-thinking', 'gemini-robotics-er-2-streaming-preview', 'gemini-3.5-live-translate-preview']
+Using: gemini-3.5-flash-lite
+
+=== Cell 11 Outputs (1 outputs) ===
+  [stream stdout]
+Loaded 2100 gothram names
+[('PAIDIBAALA', 100.0), ('PAIDIBALA', 100.0), ('PAIDIPAALA', 88.9)]
+
+=== Cell 12 Outputs (2 outputs) ===
+  [stream stdout]
+Loaded: C:\Users\Acer\Desktop\MyProjects\Websites\Proj_Trikuta_OCR\sample_img7.jpeg | size: (1351, 3000)
+
+  [display_data] keys=['image/jpeg', 'image/png', 'text/plain'] non-img=['text/plain'] text=<PIL.Image.Image image mode=RGB size=900x1998>
+=== Cell 13 Outputs (1 outputs) ===
+  [stream stdout]
+Helpers ready
+
+=== Cell 14 Outputs (1 outputs) ===
+  [stream stdout]
+[HW: జేబు : శాంద్రవి 25
+నెం. ఎ. రేహంత్
+1.05
+గొడసర
+25-01-05]
+శ్రీ త్రికోటేశ్వర స్వామి వారి దేవస్థానము
+కోటప్పకొండ క్షేత్రము- 522 549, నరసరావుపేట (మ), పల్నాడు జిల్లా,
+రశీదు నెం. [HW: 5813]
+[HW: Cell No : 79953 18954
+85006 02664, 82971 81199
+E-MAIL : eo_kotappakonda@yahoo.in]
+అభిషేకము చేయించుకొనువారి గోత్రము [HW: కాశ్యప], శ్రీ/శ్రీమతి [HW: పీటపాటి బ్రహ్మం ప్రసాదు గారు]
+[HW: మరియు ఉమాదేవి దంపతులు]
+రసుదారు వారు [HW: పిటపాటి రవికుమార్ మండలం గుంటూరు గ్రామము గుంటూరు జిల్లా]
+తేది [HW: 10/10/2025]
+టిక్కెట్ నెం. [HW: 533207]
+ఫిక్స్ నెం / సబ్ నెం [HW: 9603850122]
+తే. [HW: 22/10/25] నుండి తే. [HW: 20/11/25] వరకు కార్తీక మాసములో పరోక్ష అభిషేకము చేయించుకొనువారి షరతులతో
+ఉదయం అభిషేకము జరిపించుటకు (ఆంధ్రప్రదేశ్ దేవదాయధర్మదాయశాఖ శ్రీ యుత కమీషనర్ వారి ఉత్తర్వులు L. Dis. No. D3/COE-14021(37)/9/2022,
+Dt. 05-10-2022 ప్రకారం) రూ. [HW: 1000-00] (అక్షరములు ఒక వేయి రూపాయలు) SBI (ADB) నరసరావుపేట శాఖ A/c No. 10794475261
+IFSC Code : SBIN0001952 / డి.డి./మనీఆర్డరు/చెక్కును నెం. .....................తేది .........................ద్వారా చెల్లించినారు కాక ముద్రితము.
+చెల్లించిన వారి సంతకం
+[HW: 15 సడక రుద్ర త్రాత్రి]
+వసూలు చేసిన వారి సంతకం
+[HW: S. శ్రీనివాసులు]
+సహాయ కమిషనర్ మరియు కార్యనిర్వాహణాధికారి
+[HW: (డి. వెంకటేశ్వరరావు)]
+1. కార్యక్రమము ప్రతిరోజు ఉదయం వర్ధికి అభిషేకము జరిపించుకొనువారి గోత్రనామములు చదివి అభిషేకము చేయబడును.
+2. అభిషేకము జరిపించుకొనువారు అభిషేకము జరుగు సమయములో అంతరాలయములో కూర్చునుటకు అనుమతింపబడదు.
+3. కార్యక్రమమును అభిషేకము జరిపించుటకు దంపతులకు ప్రతిరోజు ఒక పర్యాయము ప్రత్యేక దర్శనము కల్పించబడినది.
+4. కార్యక్రమము అనంతరము విశేషప్రసాదము కరయము/పోస్టల్ సరియైన ద్వారా పై కనుపరచిన చొరునామకు పంపబడును.
+
+----- After pass 1 -----
+1. Transcription             in 1,249 | out 793 | $0.0090 (Rs 0.79)
+TOTAL                        in 1,249 | out 793 | $0.0090 (Rs 0.79)
+
+=== Cell 15 Outputs (1 outputs) ===
+  [stream stdout]
+{
+  "gothram_readings": [
+    "కాశ్యప",
+    "Kashyapa"
+  ],
+  "people": [
+    {
+      "given_name": "శ్రీమతి",
+      "surname": "శ్రీవల్లి"
+    },
+    {
+      "given_name": "శ్రీనివాస",
+      "surname": "ప్రసాదురావు"
+    }
+  ],
+  "address": "కొటప్పకొండ మండలం నరసరావుపేట",
+  "pincode": null,
+  "phones": [
+    "9603850122"
+  ],
+  "uncertain_fields": [],
+  "receipt_no": "5813",
+  "date": "10/10/2022",
+  "abhishekam_from": "22/10/22",
+  "abhishekam_to": "20/11/22",
+  "amount_rupees": "1000-00",
+  "temple_name": "శ్రీ త్రికోటేశ్వర స్వామి వారి దేవస్థానము",
+  "handwriting_box_2d": [
+    220,
+    188,
+    835,
+    968
+  ]
+}
+
+=== Cell 16 Outputs (2 outputs) ===
+  [display_data] keys=['image/jpeg', 'image/png', 'text/plain'] non-img=['text/plain'] text=<PIL.Image.Image image mode=RGB size=1000x1784>
+  [stream stdout]
+{
+  "gothram_readings": [
+    "కాశ్యపస",
+    "కాశ్యప",
+    "కాశ్యపసగో"
+  ],
+  "people": [
+    {
+      "given_name": "శ్రీవంశీ",
+      "surname": "ప్రసన్నవత్సవాయి"
+    }
+  ],
+  "address": "శ్రీనివాసపురం మండలం, పిండ్రం (గ్రామం, కొప్పర్రు పోస్ట్",
+  "pincode": "533307",
+  "phones": [
+    "9603850122"
+  ],
+  "uncertain_fields": [
+    "address"
+  ]
+}
+
+=== Cell 17 Outputs (1 outputs) ===
+  [stream stdout]
+{
+  "as_written": "కాశ్యపస",
+  "final": "KASHYAPA",
+  "matched_in_list": true,
+  "list_match": "KASHYAPA",
+  "other_possible_list_matches": [
+    "KAASYAPA",
+    "KASYAPASA"
+  ],
+  "confidence": "high",
+  "reason": "The handwritten Telugu text clearly says కాశ్యపస which corresponds to Kashyapa with an extra suffix letter sa."
+}
+
+=== Cell 18 Outputs (1 outputs) ===
+  [stream stdout]
+{
+  "receipt_no": "5813",
+  "date": "10/10/2022",
+  "gothram": "KASHYAPA",
+  "gothram_in_reference_list": true,
+  "gothram_as_written": "కాశ్యపస",
+  "gothram_alternatives": [
+    "KAASYAPA",
+    "KASYAPASA"
+  ],
+  "names": [
+    "శ్రీవంశీ ప్రసన్నవత్సవాయి"
+  ],
+  "address": "శ్రీనివాసపురం మండలం, పిండ్రం (గ్రామం, కొప్పర్రు పోస్ట్",
+  "pincode": "533307",
+  "phones": [
+    "9603850122"
+  ],
+  "abhishekam_from": "22/10/22",
+  "abhishekam_to": "20/11/22",
+  "amount_rupees": "1000-00",
+  "NEEDS_HUMAN_CHECK": [
+    "Names differ between passes: ['శ్రీమతి శ్రీవల్లి', 'శ్రీనివాస ప్రసాదురావు'] vs ['శ్రీవంశీ ప్రసన్నవత్సవాయి']"
+  ]
+}
+
+>>> FIELDS TO VERIFY BY EYE:
+  - Names differ between passes: ['శ్రీమతి శ్రీవల్లి', 'శ్రీనివాస ప్రసాదురావు'] vs ['శ్రీవంశీ ప్రసన్నవత్సవాయి']
+
+----- Total for this image (all passes) -----
+1. Transcription             in 1,249 | out 793 | $0.0090 (Rs 0.79)
+2. Fields                    in 1,205 | out 314 | $0.0046 (Rs 0.41)
+3. Zoom re-read              in 1,227 | out 170 | $0.0034 (Rs 0.30)
+4a. Gothram (candidates)     in 1,635 | out 119 | $0.0035 (Rs 0.31)
+TOTAL                        in 5,316 | out 1,396 | $0.0205 (Rs 1.81)
+
+Saved ocr_gemini.json
+

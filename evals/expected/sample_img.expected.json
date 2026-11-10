@@ -1,0 +1,74 @@
+{
+  "receipt_no": "9745",
+  "date": "02/11/26",
+  "gothram_raw": "Endavalli",
+  "gothram_resolved": "ENDAVALLI",
+  "gothram_te": "ఎండవల్లి",
+  "language": "en",
+  "people": [
+    {
+      "surname_raw": "Raoji",
+      "given_name_raw": "Mahalakshmi",
+      "surname_en": "Raoji",
+      "given_name_en": "Mahalakshmi",
+      "surname_te": "రావ్జీ",
+      "given_name_te": "మహాలక్ష్మి"
+    },
+    {
+      "surname_raw": "Raoji",
+      "given_name_raw": "Sarvotham",
+      "surname_en": "Raoji",
+      "given_name_en": "Sarvotham",
+      "surname_te": "రావ్జీ",
+      "given_name_te": "సర్వోత్తం"
+    },
+    {
+      "surname_raw": "Raoji",
+      "given_name_raw": "Shwetha",
+      "surname_en": "Raoji",
+      "given_name_en": "Shwetha",
+      "surname_te": "రావ్జీ",
+      "given_name_te": "శ్వేత"
+    },
+    {
+      "surname_raw": "Raoji",
+      "given_name_raw": "Akshara",
+      "surname_en": "Raoji",
+      "given_name_en": "Akshara",
+      "surname_te": "రావ్జీ",
+      "given_name_te": "అక్షర"
+    },
+    {
+      "surname_raw": "Raoji",
+      "given_name_raw": "Shwetha",
+      "surname_en": "Raoji",
+      "given_name_en": "Shwetha",
+      "surname_te": "రావ్జీ",
+      "given_name_te": "శ్వేత"
+    },
+    {
+      "surname_raw": "Raoji",
+      "given_name_raw": "Abhiram",
+      "surname_en": "Raoji",
+      "given_name_en": "Abhiram",
+      "surname_te": "రావ్జీ",
+      "given_name_te": "అభిరామ్"
+    },
+    {
+      "surname_raw": "Raoji",
+      "given_name_raw": "Nupurti",
+      "surname_en": "Raoji",
+      "given_name_en": "Nupurti",
+      "surname_te": "రావ్జీ",
+      "given_name_te": "నుపూర్తి"
+    }
+  ],
+  "address": "3-6-293/2/D, Hyderguda, Hyderabad",
+  "pincode": "500029",
+  "phones": [
+    "7400481724"
+  ],
+  "abhishekam_from": "10/11/26",
+  "abhishekam_to": "08/12/26",
+  "amount_rupees": "1000-00"
+}

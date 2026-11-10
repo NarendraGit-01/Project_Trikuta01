@@ -1,0 +1,138 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "final": {
+    "receipt_no": "5813",
+    "date": "10/10/2022",
+    "gothram": "KASHYAPA",
+    "gothram_in_reference_list": true,
+    "gothram_as_written": "కాశ్యపస",
+    "gothram_alternatives": [
+      "KAASYAPA",
+      "KASYAPASA"
+    ],
+    "names": [
+      "శ్రీవంశీ ప్రసన్నవత్సవాయి"
+    ],
+    "address": "శ్రీనివాసపురం మండలం, పిండ్రం (గ్రామం, కొప్పర్రు పోస్ట్",
+    "pincode": "533307",
+    "phones": [
+      "9603850122"
+    ],
+    "abhishekam_from": "22/10/22",
+    "abhishekam_to": "20/11/22",
+    "amount_rupees": "1000-00",
+    "NEEDS_HUMAN_CHECK": [
+      "Names differ between passes: ['శ్రీమతి శ్రీవల్లి', 'శ్రీనివాస ప్రసాదురావు'] vs ['శ్రీవంశీ ప్రసన్నవత్సవాయి']"
+    ]
+  },
+  "pass1_transcription": "[HW: జేబు : శాంద్రవి 25\nనెం. ఎ. రేహంత్\n1.05\nగొడసర\n25-01-05]\nశ్రీ త్రికోటేశ్వర స్వామి వారి దేవస్థానము\nకోటప్పకొండ క్షేత్రము- 522 549, నరసరావుపేట (మ), పల్నాడు జిల్లా,\nరశీదు నెం. [HW: 5813]\n[HW: Cell No : 79953 18954\n85006 02664, 82971 81199\nE-MAIL : eo_kotappakonda@yahoo.in]\nఅభిషేకము చేయించుకొనువారి గోత్రము [HW: కాశ్యప], శ్రీ/శ్రీమతి [HW: పీటపాటి బ్రహ్మం ప్రసాదు గారు]\n[HW: మరియు ఉమాదేవి దంపతులు]\nరసుదారు వారు [HW: పిటపాటి రవికుమార్ మండలం గుంటూరు గ్రామము గుంటూరు జిల్లా]\nతేది [HW: 10/10/2025]\nటిక్కెట్ నెం. [HW: 533207]\nఫిక్స్ నెం / సబ్ నెం [HW: 9603850122]\nతే. [HW: 22/10/25] నుండి తే. [HW: 20/11/25] వరకు కార్తీక మాసములో పరోక్ష అభిషేకము చేయించుకొనువారి షరతులతో\nఉదయం అభిషేకము జరిపించుటకు (ఆంధ్రప్రదేశ్ దేవదాయధర్మదాయశాఖ శ్రీ యుత కమీషనర్ వారి ఉత్తర్వులు L. Dis. No. D3/COE-14021(37)/9/2022,\nDt. 05-10-2022 ప్రకారం) రూ. [HW: 1000-00] (అక్షరములు ఒక వేయి రూపాయలు) SBI (ADB) నరసరావుపేట శాఖ A/c No. 10794475261\nIFSC Code : SBIN0001952 / డి.డి./మనీఆర్డరు/చెక్కును నెం. .....................తేది .........................ద్వారా చెల్లించినారు కాక ముద్రితము.\nచెల్లించిన వారి సంతకం\n[HW: 15 సడక రుద్ర త్రాత్రి]\nవసూలు చేసిన వారి సంతకం\n[HW: S. శ్రీనివాసులు]\nసహాయ కమిషనర్ మరియు కార్యనిర్వాహణాధికారి\n[HW: (డి. వెంకటేశ్వరరావు)]\n1. కార్యక్రమము ప్రతిరోజు ఉదయం వర్ధికి అభిషేకము జరిపించుకొనువారి గోత్రనామములు చదివి అభిషేకము చేయబడును.\n2. అభిషేకము జరిపించుకొనువారు అభిషేకము జరుగు సమయములో అంతరాలయములో కూర్చునుటకు అనుమతింపబడదు.\n3. కార్యక్రమమును అభిషేకము జరిపించుటకు దంపతులకు ప్రతిరోజు ఒక పర్యాయము ప్రత్యేక దర్శనము కల్పించబడినది.\n4. కార్యక్రమము అనంతరము విశేషప్రసాదము కరయము/పోస్టల్ సరియైన ద్వారా పై కనుపరచిన చొరునామకు పంపబడును.",
+  "pass2": {
+    "gothram_readings": [
+      "కాశ్యప",
+      "Kashyapa"
+    ],
+    "people": [
+      {
+        "given_name": "శ్రీమతి",
+        "surname": "శ్రీవల్లి"
+      },
+      {
+        "given_name": "శ్రీనివాస",
+        "surname": "ప్రసాదురావు"
+      }
+    ],
+    "address": "కొటప్పకొండ మండలం నరసరావుపేట",
+    "pincode": null,
+    "phones": [
+      "9603850122"
+    ],
+    "uncertain_fields": [],
+    "receipt_no": "5813",
+    "date": "10/10/2022",
+    "abhishekam_from": "22/10/22",
+    "abhishekam_to": "20/11/22",
+    "amount_rupees": "1000-00",
+    "temple_name": "శ్రీ త్రికోటేశ్వర స్వామి వారి దేవస్థానము",
+    "handwriting_box_2d": [
+      220,
+      188,
+      835,
+      968
+    ]
+  },
+  "pass3_zoom": {
+    "gothram_readings": [
+      "కాశ్యపస",
+      "కాశ్యప",
+      "కాశ్యపసగో"
+    ],
+    "people": [
+      {
+        "given_name": "శ్రీవంశీ",
+        "surname": "ప్రసన్నవత్సవాయి"
+      }
+    ],
+    "address": "శ్రీనివాసపురం మండలం, పిండ్రం (గ్రామం, కొప్పర్రు పోస్ట్",
+    "pincode": "533307",
+    "phones": [
+      "9603850122"
+    ],
+    "uncertain_fields": [
+      "address"
+    ]
+  },
+  "pass4_gothram": {
+    "as_written": "కాశ్యపస",
+    "final": "KASHYAPA",
+    "matched_in_list": true,
+    "list_match": "KASHYAPA",
+    "other_possible_list_matches": [
+      "KAASYAPA",
+      "KASYAPASA"
+    ],
+    "confidence": "high",
+    "reason": "The handwritten Telugu text clearly says కాశ్యపస which corresponds to Kashyapa with an extra suffix letter sa."
+  },
+  "usage": {
+    "1. Transcription": {
+      "gemini-3.5-flash-lite": {
+        "input_tokens": 1249,
+        "output_tokens": 793,
+        "total_tokens": 2042,
+        "input_token_details": {
+          "cache_read": 0
+        }
+      }
+    },
+    "2. Fields": {
+      "gemini-3.5-flash-lite": {
+        "input_tokens": 1205,
+        "output_tokens": 314,
+        "total_tokens": 1519,
+        "input_token_details": {
+          "cache_read": 0
+        }
+      }
+    },
+    "3. Zoom re-read": {
+      "gemini-3.5-flash-lite": {
+        "input_tokens": 1227,
+        "output_tokens": 170,
+        "total_tokens": 1397,
+        "input_token_details": {
+          "cache_read": 0
+        }
+      }
+    },
+    "4a. Gothram (candidates)": {
+      "gemini-3.5-flash-lite": {
+        "input_tokens": 1635,
+        "output_tokens": 119,
+        "total_tokens": 1754,
+        "input_token_details": {
+          "cache_read": 0
+        }
+      }
+    }
+  }
+}

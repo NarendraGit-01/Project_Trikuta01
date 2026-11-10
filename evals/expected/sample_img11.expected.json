@@ -1,0 +1,67 @@
+{
+  "receipt_no": "5811",
+  "date": "10/10/2025",
+  "gothram_raw": "ప్రగబలస",
+  "gothram_resolved": "PAGADABALA",
+  "gothram_te": "పగడబాల",
+  "language": "te",
+  "people": [
+    {
+      "surname_raw": "అద్దేపల్లి",
+      "given_name_raw": "పుల్లయ్య",
+      "surname_en": "Addepalli",
+      "given_name_en": "Pullayya",
+      "surname_te": "అద్దేపల్లి",
+      "given_name_te": "పుల్లయ్య"
+    },
+    {
+      "surname_raw": "అద్దేపల్లి",
+      "given_name_raw": "రత్నవతి",
+      "surname_en": "Addepalli",
+      "given_name_en": "Ratnavati",
+      "surname_te": "అద్దేపల్లి",
+      "given_name_te": "రత్నవతి"
+    },
+    {
+      "surname_raw": "అద్దేపల్లి",
+      "given_name_raw": "నాగరాజు",
+      "surname_en": "Addepalli",
+      "given_name_en": "Nagaraju",
+      "surname_te": "అద్దేపల్లి",
+      "given_name_te": "నాగరాజు"
+    },
+    {
+      "surname_raw": "అద్దేపల్లి",
+      "given_name_raw": "సుబ్బలక్ష్మి",
+      "surname_en": "Addepalli",
+      "given_name_en": "Subbalakshmi",
+      "surname_te": "అద్దేపల్లి",
+      "given_name_te": "సుబ్బలక్ష్మి"
+    },
+    {
+      "surname_raw": "అద్దేపల్లి",
+      "given_name_raw": "సాయినాథ్ లిపిత్",
+      "surname_en": "Addepalli",
+      "given_name_en": "Sai Nath Lipith",
+      "surname_te": "అద్దేపల్లి",
+      "given_name_te": "సాయినాథ్ లిపిత్"
+    },
+    {
+      "surname_raw": "అద్దేపల్లి",
+      "given_name_raw": "సాయి లక్ష్మి గాయత్రీరాజ్",
+      "surname_en": "Addepalli",
+      "given_name_en": "Sai Lakshmi Gayatriraj",
+      "surname_te": "అద్దేపల్లి",
+      "given_name_te": "సాయి లక్ష్మి గాయత్రీరాజ్"
+    }
+  ],
+  "address": "పెద్దాపురం, పెద్దాపురం మండలం, కాకినాడ జిల్లా",
+  "pincode": null,
+  "phones": [
+    "7036075105",
+    "7794026250"
+  ],
+  "abhishekam_from": "22/10/2025",
+  "abhishekam_to": "20/11/2025",
+  "amount_rupees": "1000-00"
+}

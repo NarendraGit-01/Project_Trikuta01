@@ -1,0 +1,74 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "sample_count": 2,
+  "receipt_number_accuracy": 100.0,
+  "gothram_top1_accuracy": 0.0,
+  "devotee_names_similarity": 49.0,
+  "phone_recall": 100.0,
+  "pincode_accuracy": 100.0,
+  "avg_duration_seconds": 53.02,
+  "avg_cost_usd": 0.035,
+  "avg_cost_inr": 3.08,
+  "results": [
+    {
+      "filename": "sample_img10.jpeg",
+      "receipt_no_expected": "5810",
+      "receipt_no_actual": "5810",
+      "receipt_no_match": true,
+      "gothram_expected": "PAIDIPALLI",
+      "gothram_actual": "పెడుపల్ల",
+      "gothram_similarity": 0.0,
+      "gothram_top1_match": false,
+      "gothram_in_reference": false,
+      "people_count_expected": 4,
+      "people_count_actual": 4,
+      "people_count_match": true,
+      "people_names_similarity": 0.0,
+      "phones_expected": [
+        "9989496034"
+      ],
+      "phones_actual": [
+        "9989496034"
+      ],
+      "phone_recall": 1.0,
+      "pincode_expected": "533307",
+      "pincode_actual": "533307",
+      "pincode_match": true,
+      "address_similarity": 0.706,
+      "overall_confidence": "AMBER",
+      "duration_seconds": 23.71,
+      "cost_usd": 0.0343,
+      "cost_inr": 3.02
+    },
+    {
+      "filename": "sample_img.jpeg",
+      "receipt_no_expected": "9745",
+      "receipt_no_actual": "9745",
+      "receipt_no_match": true,
+      "gothram_expected": "ENDAVALLI",
+      "gothram_actual": "erodavalli",
+      "gothram_similarity": 0.824,
+      "gothram_top1_match": false,
+      "gothram_in_reference": false,
+      "people_count_expected": 7,
+      "people_count_actual": 7,
+      "people_count_match": true,
+      "people_names_similarity": 0.98,
+      "phones_expected": [
+        "7400481724"
+      ],
+      "phones_actual": [
+        "7400481724"
+      ],
+      "phone_recall": 1.0,
+      "pincode_expected": "500029",
+      "pincode_actual": "500029",
+      "pincode_match": true,
+      "address_similarity": 0.969,
+      "overall_confidence": "AMBER",
+      "duration_seconds": 82.33,
+      "cost_usd": 0.0358,
+      "cost_inr": 3.15
+    }
+  ]
+}

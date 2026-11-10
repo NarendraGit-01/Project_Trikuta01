@@ -1,0 +1,50 @@
+{
+  "receipt_no": "5817",
+  "date": "12.10.2025",
+  "gothram_raw": "శునకశీల",
+  "gothram_resolved": "SAUNAKASA",
+  "gothram_te": "శౌనకస",
+  "language": "te",
+  "people": [
+    {
+      "surname_raw": "మొండిరెడ్డి",
+      "given_name_raw": "నాగరాజు",
+      "surname_en": "Mondireddy",
+      "given_name_en": "Nagaraju",
+      "surname_te": "మొండిరెడ్డి",
+      "given_name_te": "నాగరాజు"
+    },
+    {
+      "surname_raw": "మొండిరెడ్డి",
+      "given_name_raw": "పార్వతి",
+      "surname_en": "Mondireddy",
+      "given_name_en": "Parvati",
+      "surname_te": "మొండిరెడ్డి",
+      "given_name_te": "పార్వతి"
+    },
+    {
+      "surname_raw": "మొండిరెడ్డి",
+      "given_name_raw": "వినయ నాగదుర్గ వెంకట సాయి సూరి",
+      "surname_en": "Mondireddy",
+      "given_name_en": "Vinaya Nagadurga Venkata Sai Soori",
+      "surname_te": "మొండిరెడ్డి",
+      "given_name_te": "వినయ నాగదుర్గ వెంకట సాయి సూరి"
+    },
+    {
+      "surname_raw": "మొండిరెడ్డి",
+      "given_name_raw": "నాగదుర్గ విశ్వనాధ్",
+      "surname_en": "Mondireddy",
+      "given_name_en": "Nagadurga Viswanath",
+      "surname_te": "మొండిరెడ్డి",
+      "given_name_te": "నాగదుర్గ విశ్వనాధ్"
+    }
+  ],
+  "address": "అంగర (పడమరఖండ్రిక), కపిలేశ్వరపురం మండలం, కోనసీమ జిల్లా",
+  "pincode": null,
+  "phones": [
+    "9441795894"
+  ],
+  "abhishekam_from": "22-10-2025",
+  "abhishekam_to": "20-11-2025",
+  "amount_rupees": "1000-00"
+}

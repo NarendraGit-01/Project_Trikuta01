@@ -1,0 +1,66 @@
+{
+  "receipt_no": "5814",
+  "date": "10/10/25",
+  "gothram_raw": "మునుకుల",
+  "gothram_resolved": "MUNUKULLA",
+  "gothram_te": "మునుకుళ్ల",
+  "language": "te/en",
+  "people": [
+    {
+      "surname_raw": "గండి",
+      "given_name_raw": "నమఃశివాయ",
+      "surname_en": "Gandi",
+      "given_name_en": "Namahsivaya",
+      "surname_te": "గండి",
+      "given_name_te": "నమఃశివాయ"
+    },
+    {
+      "surname_raw": "గండి",
+      "given_name_raw": "రత్నకుమారి",
+      "surname_en": "Gandi",
+      "given_name_en": "Ratnakumari",
+      "surname_te": "గండి",
+      "given_name_te": "రత్నకుమారి"
+    },
+    {
+      "surname_raw": "గండి",
+      "given_name_raw": "రామ్కుమార్",
+      "surname_en": "Gandi",
+      "given_name_en": "Ramkumar",
+      "surname_te": "గండి",
+      "given_name_te": "రామ్కుమార్"
+    },
+    {
+      "surname_raw": "గండి",
+      "given_name_raw": "పద్మావతి",
+      "surname_en": "Gandi",
+      "given_name_en": "Padmavati",
+      "surname_te": "గండి",
+      "given_name_te": "పద్మావతి"
+    },
+    {
+      "surname_raw": "గండి",
+      "given_name_raw": "కియాన్ష్",
+      "surname_en": "Gandi",
+      "given_name_en": "Kiyansh",
+      "surname_te": "గండి",
+      "given_name_te": "కియాన్ష్"
+    },
+    {
+      "surname_raw": "గండి",
+      "given_name_raw": "అయాన్ష్",
+      "surname_en": "Gandi",
+      "given_name_en": "Ayansh",
+      "surname_te": "గండి",
+      "given_name_te": "అయాన్ష్"
+    }
+  ],
+  "address": "D.No: 4-16-4, Torronipeta, Near blind school, Mandapeta, East Godavari dist",
+  "pincode": "533308",
+  "phones": [
+    "8099992999"
+  ],
+  "abhishekam_from": "22/10/25",
+  "abhishekam_to": "20/11/25",
+  "amount_rupees": "1000-00"
+}

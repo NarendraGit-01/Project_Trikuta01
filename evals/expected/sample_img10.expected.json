@@ -1,0 +1,50 @@
+{
+  "receipt_no": "5810",
+  "date": "05-10-25",
+  "gothram_raw": "పైడిపల్లి",
+  "gothram_resolved": "PAIDIPALLI",
+  "gothram_te": "పైడిపల్లి",
+  "language": "te",
+  "people": [
+    {
+      "surname_raw": "యడ్ల",
+      "given_name_raw": "పట్టాభి రామయ్య",
+      "surname_en": "Yadla",
+      "given_name_en": "Pattabhi Ramayya",
+      "surname_te": "యడ్ల",
+      "given_name_te": "పట్టాభి రామయ్య"
+    },
+    {
+      "surname_raw": "యడ్ల",
+      "given_name_raw": "వరలక్ష్మి (ప్రసన్న)",
+      "surname_en": "Yadla",
+      "given_name_en": "Varalakshmi (Prasanna)",
+      "surname_te": "యడ్ల",
+      "given_name_te": "వరలక్ష్మి (ప్రసన్న)"
+    },
+    {
+      "surname_raw": "యడ్ల",
+      "given_name_raw": "శ్రీ చక్రధర్",
+      "surname_en": "Yadla",
+      "given_name_en": "Sri Chakradhar",
+      "surname_te": "యడ్ల",
+      "given_name_te": "శ్రీ చక్రధర్"
+    },
+    {
+      "surname_raw": "యడ్ల",
+      "given_name_raw": "శ్రీ వైష్ణవి",
+      "surname_en": "Yadla",
+      "given_name_en": "Sri Vaishnavi",
+      "surname_te": "యడ్ల",
+      "given_name_te": "శ్రీ వైష్ణవి"
+    }
+  ],
+  "address": "D.No: 1-24, మెయిన్ రోడ్డు, పెట్రోల్ బంకు ప్రక్కన, అంగర",
+  "pincode": "533307",
+  "phones": [
+    "9989496034"
+  ],
+  "abhishekam_from": "22-10-25",
+  "abhishekam_to": "20-11-25",
+  "amount_rupees": "1000-00"
+}

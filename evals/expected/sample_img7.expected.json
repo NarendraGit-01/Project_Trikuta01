@@ -1,0 +1,42 @@
+{
+  "receipt_no": "5813",
+  "date": "10/10/2025",
+  "gothram_raw": "కాశ్యపస",
+  "gothram_resolved": "KASHYAPA",
+  "gothram_te": "కాశ్యప",
+  "language": "te",
+  "people": [
+    {
+      "surname_raw": "కోటినందిని",
+      "given_name_raw": "సుబ్రహ్మణ్యం",
+      "surname_en": "Kotinandini",
+      "given_name_en": "Subrahmanyam",
+      "surname_te": "కోటినందిని",
+      "given_name_te": "సుబ్రహ్మణ్యం"
+    },
+    {
+      "surname_raw": "కోటినందిని",
+      "given_name_raw": "సత్యవతి",
+      "surname_en": "Kotinandini",
+      "given_name_en": "Satyavati",
+      "surname_te": "కోటినందిని",
+      "given_name_te": "సత్యవతి"
+    },
+    {
+      "surname_raw": "కోటినందిని",
+      "given_name_raw": "శ్రీనివాస్",
+      "surname_en": "Kotinandini",
+      "given_name_en": "Srinivas",
+      "surname_te": "కోటినందిని",
+      "given_name_te": "శ్రీనివాస్"
+    }
+  ],
+  "address": "శ్రీనివాసపురం మండలం, అంగడం గ్రామం, కోనసీమ జిల్లా",
+  "pincode": "533307",
+  "phones": [
+    "9603850122"
+  ],
+  "abhishekam_from": "22/10/25",
+  "abhishekam_to": "20/11/25",
+  "amount_rupees": "1000-00"
+}

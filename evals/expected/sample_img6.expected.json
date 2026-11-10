@@ -1,0 +1,67 @@
+{
+  "receipt_no": "5816",
+  "date": "10-10-2025",
+  "gothram_raw": "పైడిపాల",
+  "gothram_resolved": "PAIDIPALA",
+  "gothram_te": "పైడిపాల",
+  "language": "te",
+  "people": [
+    {
+      "surname_raw": "తోటపల్లి",
+      "given_name_raw": "శ్రీనివాసు",
+      "surname_en": "Totapalli",
+      "given_name_en": "Srinivasu",
+      "surname_te": "తోటపల్లి",
+      "given_name_te": "శ్రీనివాసు"
+    },
+    {
+      "surname_raw": "తోటపల్లి",
+      "given_name_raw": "సత్యవాణి",
+      "surname_en": "Totapalli",
+      "given_name_en": "Satyavani",
+      "surname_te": "తోటపల్లి",
+      "given_name_te": "సత్యవాణి"
+    },
+    {
+      "surname_raw": "తోటపల్లి",
+      "given_name_raw": "జయప్రలక్ష్మి సరళ",
+      "surname_en": "Totapalli",
+      "given_name_en": "Jayapralakshmi Sarala",
+      "surname_te": "తోటపల్లి",
+      "given_name_te": "జయప్రలక్ష్మి సరళ"
+    },
+    {
+      "surname_raw": "తోటపల్లి",
+      "given_name_raw": "శ్రీ సాయి సునీల్",
+      "surname_en": "Totapalli",
+      "given_name_en": "Sri Sai Sunil",
+      "surname_te": "తోటపల్లి",
+      "given_name_te": "శ్రీ సాయి సునీల్"
+    },
+    {
+      "surname_raw": "బేడన",
+      "given_name_raw": "నాగ వెంకట కృష్ణ",
+      "surname_en": "Bedana",
+      "given_name_en": "Naga Venkata Krishna",
+      "surname_te": "బేడన",
+      "given_name_te": "నాగ వెంకట కృష్ణ"
+    },
+    {
+      "surname_raw": "తోటపల్లి",
+      "given_name_raw": "హేమచంద్ర మల్లికార్జున రావు",
+      "surname_en": "Totapalli",
+      "given_name_en": "Hemachandra Mallikarjuna Rao",
+      "surname_te": "తోటపల్లి",
+      "given_name_te": "హేమచంద్ర మల్లికార్జున రావు"
+    }
+  ],
+  "address": "తోటపల్లి, కౌతరపు రోడ్, కౌతవరం, కృష్ణా జిల్లా",
+  "pincode": "533307",
+  "phones": [
+    "9908794696",
+    "9652767626"
+  ],
+  "abhishekam_from": "22-10-2025",
+  "abhishekam_to": "20-11-2025",
+  "amount_rupees": "1000-00"
+}
