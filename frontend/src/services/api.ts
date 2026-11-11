@@ -55,7 +55,7 @@ export async function processSampleOCR(
 export async function processUploadOCR(
   file: File,
   modelName: string = 'gemini-3.8-flash',
-  skipTranscription: boolean = false,
+  skipTranscription: boolean = true,
   bookNumber?: string
 ): Promise<PipelineResult> {
   const formData = new FormData();

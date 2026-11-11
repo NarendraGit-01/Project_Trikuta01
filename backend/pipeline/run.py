@@ -144,25 +144,36 @@ def process_receipt(
     r2, _ = run_structured_extraction(llm, image_b64, tracker)
     passes["pass2_structured"] = r2.model_dump()
 
-    # Pass 3: Zoom Handwriting Crop
+    # Pass 3: Zoom Handwriting Crop (only needed if structured extraction found 0 devotees)
     r3 = None
-    crop = crop_from_box(pil_img, r2.handwriting_box_2d)
-    if crop:
-        r3, _ = run_zoom_reread(llm, crop, tracker)
-        passes["pass3_zoom"] = r3.model_dump()
+    crop = None
+    if not r2.people or len(r2.people) == 0:
+        crop = crop_from_box(pil_img, r2.handwriting_box_2d)
+        if crop:
+            try:
+                r3, _ = run_zoom_reread(llm, crop, tracker)
+                passes["pass3_zoom"] = r3.model_dump()
+            except Exception as e:
+                passes["pass3_zoom_error"] = str(e)
 
-    # Pass 4: Adaptive Field Crops (only needed if earlier passes lacked readings)
+    # Pass 4: Adaptive Field Crops (only needed if Pass 2 completely missed readings)
     field_gothram_readings = []
     if r2.gothram_box_2d and (not r2.gothram_readings or len(r2.gothram_readings) == 0):
-        field_gothram_readings = run_field_gothram_crop(llm, pil_img, r2.gothram_box_2d, tracker)
-        passes["pass4_gothram_crop"] = field_gothram_readings
+        try:
+            field_gothram_readings = run_field_gothram_crop(llm, pil_img, r2.gothram_box_2d, tracker)
+            passes["pass4_gothram_crop"] = field_gothram_readings
+        except Exception:
+            pass
 
     field_phones = []
     if r2.phone_box_2d and (not r2.phones or len(r2.phones) == 0):
-        field_phones = run_field_phones_crop(llm, pil_img, r2.phone_box_2d, tracker)
-        passes["pass4_phones_crop"] = field_phones
+        try:
+            field_phones = run_field_phones_crop(llm, pil_img, r2.phone_box_2d, tracker)
+            passes["pass4_phones_crop"] = field_phones
+        except Exception:
+            pass
 
-    # Pass 5: Tiered Gothram Resolution against 2,099 Master List
+    # Pass 5: Instant Master List Gothram Resolution (RapidFuzz - 1ms, zero latency)
     all_g_readings = list(dict.fromkeys([
         *field_gothram_readings,
         *(r3.gothram_readings if r3 else []),
@@ -171,45 +182,33 @@ def process_receipt(
     cands = resolver.get_candidates(all_g_readings, top_k=30)
     best_cand_score = cands[0][1] if cands else 0.0
 
-    from langchain_core.callbacks import UsageMetadataCallbackHandler
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    cb_g = UsageMetadataCallbackHandler()
-    gothram_prompt = resolver.build_gothram_prompt(all_g_readings, cands, include_full_list=False)
-
-    crop_target = crop or pil_img
-    crop_b64 = to_b64(crop_target)
-
-    messages_g = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=[
-            {"type": "text", "text": gothram_prompt},
-            {"type": "image", "base64": crop_b64, "mime_type": "image/jpeg"}
-        ])
-    ]
-
-    gothram_llm = llm.with_structured_output(GothramPick)
-    g_pick = gothram_llm.invoke(messages_g, config={"callbacks": [cb_g]})
-
-    for model, meta in cb_g.usage_metadata.items():
-        tracker.log_call(
-            label="5a. Gothram Resolution (Candidates)",
-            model_name=model,
-            input_tokens=meta.get("input_tokens", 0),
-            output_tokens=meta.get("output_tokens", 0)
-        )
-
-    # Exact Reference List Guarantee:
-    # If the candidate matching against the 2,099 master list has a score >= 90%,
-    # guarantee that it is matched and marked high confidence.
-    if best_cand_score >= 90.0:
+    if cands and best_cand_score >= 80.0:
         top_name = cands[0][0]
-        if not g_pick.matched_in_list or not g_pick.list_match:
-            g_pick.final = top_name
-            g_pick.list_match = top_name
-            g_pick.matched_in_list = True
-            g_pick.confidence = "high"
-            g_pick.reason = f"Verified with Devasthanam 2,099 Gothram Master: {top_name} ({best_cand_score:.0f}%)"
+        g_pick = GothramPick(
+            final=top_name,
+            matched_in_list=True,
+            list_match=top_name,
+            confidence="high" if best_cand_score >= 90.0 else "medium",
+            reason=f"Verified with Devasthanam 2,099 Gothram Master ({best_cand_score:.0f}%)"
+        )
+    elif cands and best_cand_score >= 60.0:
+        top_name = cands[0][0]
+        g_pick = GothramPick(
+            final=top_name,
+            matched_in_list=True,
+            list_match=top_name,
+            confidence="medium",
+            reason=f"Candidate match: {top_name} ({best_cand_score:.0f}%)"
+        )
+    else:
+        raw_reading = all_g_readings[0] if all_g_readings else (r2.gothram_as_written or "")
+        g_pick = GothramPick(
+            final=raw_reading,
+            matched_in_list=False,
+            list_match=None,
+            confidence="low",
+            reason="Unlisted gothram - marked for staff verification"
+        )
 
     passes["pass5_gothram_pick"] = g_pick.model_dump()
 

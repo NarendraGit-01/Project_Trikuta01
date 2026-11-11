@@ -204,7 +204,7 @@ def process_sample_receipt(req: ProcessSampleRequest):
 async def process_uploaded_receipt(
     file: UploadFile = File(...),
     model_name: Optional[str] = Form(None),
-    skip_transcription: bool = Form(False),
+    skip_transcription: bool = Form(True),
     book_number: Optional[str] = Form(None)
 ):
     """Run full OCR pipeline on an uploaded receipt image with auto-orientation & cropping."""
