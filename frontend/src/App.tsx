@@ -8,7 +8,7 @@ import { PoojaListPage } from './pages/PoojaListPage';
 import { DispatchPage } from './pages/DispatchPage';
 import { GothramMasterPage } from './pages/GothramMasterPage';
 import { PipelineResult } from './types';
-import { getReceipt } from './services/api';
+import { getReceipt, deleteStagedReceipt } from './services/api';
 import { deleteStoredReceipt } from './services/receiptStore';
 
 export const App: React.FC = () => {
@@ -40,6 +40,19 @@ export const App: React.FC = () => {
   };
 
   const handleSavedReceipt = async (receiptId: number) => {
+    const stagedIdFromResult = (activeOCRResult?.intermediate_passes as any)?.staged_id;
+    const stagedIdFromKey =
+      activeStoredReceiptId && activeStoredReceiptId.startsWith('staged_')
+        ? Number(activeStoredReceiptId.replace('staged_', ''))
+        : undefined;
+    const stagedIdToDelete = stagedIdFromResult || stagedIdFromKey;
+
+    if (stagedIdToDelete && !Number.isNaN(stagedIdToDelete)) {
+      await deleteStagedReceipt(stagedIdToDelete).catch((e) =>
+        console.warn('Could not remove receipt from cloud queue:', e)
+      );
+    }
+
     if (activeStoredReceiptId) {
       try {
         await deleteStoredReceipt(activeStoredReceiptId);

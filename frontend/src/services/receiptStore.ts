@@ -2,12 +2,15 @@ import { PipelineResult } from '../types';
 
 export interface StoredReceiptItem {
   id: string;
+  stagedId?: number;
   filename: string;
   fileSize: number;
-  blob: Blob;
+  blob?: Blob;
   originalBlob?: Blob;
   previewUrl?: string;
+  imageUrl?: string;
   bookNumber?: string;
+  deviceLabel?: string;
   uploadedAt: number;
   rotation: number;
   status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
@@ -81,10 +84,10 @@ export async function getAllStoredReceipts(): Promise<StoredReceiptItem[]> {
     request.onsuccess = () => {
       db.close();
       const records: StoredReceiptItem[] = request.result || [];
-      // Generate object URLs for immediate preview
+      // Generate object URLs for immediate preview when local blob exists
       const withUrls = records.map((rec) => ({
         ...rec,
-        previewUrl: URL.createObjectURL(rec.blob),
+        previewUrl: rec.blob ? URL.createObjectURL(rec.blob) : rec.previewUrl,
       }));
       // Sort oldest to newest by default so book sequence is preserved
       withUrls.sort((a, b) => a.uploadedAt - b.uploadedAt);

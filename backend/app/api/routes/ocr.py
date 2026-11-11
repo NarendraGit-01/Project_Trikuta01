@@ -4,7 +4,7 @@ import shutil
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
 
 from pydantic import BaseModel
@@ -429,16 +429,22 @@ async def stage_upload_receipts(
 
 @router.get("/staging")
 def list_staged_receipts():
-    """List all pending staged images waiting to be processed."""
+    """List all pending / extracted staged images waiting to be reviewed and saved."""
     db = SessionLocal()
     try:
-        items = db.query(StagedImage).filter(StagedImage.status == "PENDING").order_by(StagedImage.id.desc()).all()
+        items = (
+            db.query(StagedImage)
+            .filter(StagedImage.status.in_(["PENDING", "EXTRACTED"]))
+            .order_by(StagedImage.id.asc())
+            .all()
+        )
         return [
             {
                 "id": item.id,
                 "filename": item.filename,
                 "file_size": item.file_size,
                 "preview_url": item.preview_url,
+                "image_url": f"/api/v1/ocr/staging/{item.id}/image",
                 "book_number": item.book_number,
                 "device_label": item.device_label,
                 "status": item.status,
@@ -450,16 +456,100 @@ def list_staged_receipts():
         db.close()
 
 
-@router.delete("/staging/{staged_id}")
-def delete_staged_receipt(staged_id: int):
-    """Remove a staged image from the queue."""
+@router.get("/staging/{staged_id}/image")
+def get_staged_receipt_image(staged_id: int):
+    """Serve staged image bytes from same origin (prevents canvas CORS tainting during manual crop)."""
     db = SessionLocal()
     try:
         item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
         if not item:
             raise HTTPException(status_code=404, detail="Staged item not found")
+
+        storage = get_storage()
+        contents = storage.get(item.file_path)
+        if contents is None:
+            file_full_path = Path(item.file_path)
+            if not file_full_path.exists():
+                file_full_path = Path(settings.STORAGE_DIR) / Path(item.file_path).name
+            if file_full_path.exists():
+                with open(file_full_path, "rb") as f:
+                    contents = f.read()
+
+        if not contents:
+            raise HTTPException(status_code=404, detail="Staged image file not found")
+
+        return Response(
+            content=contents,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
+    finally:
+        db.close()
+
+
+@router.put("/staging/{staged_id}/image")
+async def update_staged_receipt_image(staged_id: int, file: UploadFile = File(...)):
+    """Replace a staged receipt image after manual crop, auto-crop, or rotation."""
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded cropped image is empty.")
+
+    db = SessionLocal()
+    try:
+        item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Staged item not found")
+
+        storage = get_storage()
+        old_path = item.file_path
+        ext = Path(item.filename).suffix or ".jpg"
+        new_path = storage.save_file(contents, prefix="staging", extension=ext)
+
+        item.file_path = new_path
+        item.preview_url = storage.get_url(new_path)
+        item.file_size = len(contents)
+        item.image_hash = hashlib.sha256(contents).hexdigest()
+        item.status = "PENDING"
+        db.commit()
+        db.refresh(item)
+
+        if old_path and old_path != new_path:
+            try:
+                storage.delete(old_path)
+            except Exception:
+                pass
+
+        return {
+            "id": item.id,
+            "filename": item.filename,
+            "file_size": item.file_size,
+            "preview_url": item.preview_url,
+            "image_url": f"/api/v1/ocr/staging/{item.id}/image",
+            "book_number": item.book_number,
+            "device_label": item.device_label,
+            "status": item.status,
+            "created_at": item.created_at.isoformat(),
+        }
+    finally:
+        db.close()
+
+
+@router.delete("/staging/{staged_id}")
+def delete_staged_receipt(staged_id: int):
+    """Remove a staged image from the queue and storage."""
+    db = SessionLocal()
+    try:
+        item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Staged item not found")
+        file_path = item.file_path
         db.delete(item)
         db.commit()
+        if file_path:
+            try:
+                get_storage().delete(file_path)
+            except Exception:
+                pass
         return {"status": "deleted", "id": staged_id}
     finally:
         db.close()
@@ -506,13 +596,14 @@ def process_staged_receipt(
         result = apply_translation(result)
         result.intermediate_passes["stored_original_path"] = item.file_path
         result.intermediate_passes["image_hash"] = item.image_hash
+        result.intermediate_passes["staged_id"] = staged_id
         if item.book_number:
             result.intermediate_passes["book_number"] = item.book_number
 
         result = check_and_annotate_duplicate(result)
 
-        # Mark item as PROCESSED in staging
-        item.status = "PROCESSED"
+        # Mark as EXTRACTED (stays visible in queue until operator reviews & saves to DB)
+        item.status = "EXTRACTED"
         db.commit()
 
         return result

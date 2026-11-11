@@ -168,6 +168,102 @@ export async function autoCropImage(file: File): Promise<{
   return res.json();
 }
 
+export interface CloudStagedItem {
+  id: number;
+  filename: string;
+  file_size: number;
+  preview_url: string;
+  image_url: string;
+  book_number?: string;
+  device_label?: string;
+  status: string;
+  created_at: string;
+}
+
+export async function listStagedReceipts(): Promise<CloudStagedItem[]> {
+  const res = await fetch(`${API_BASE}/ocr/staging`);
+  if (!res.ok) {
+    throw new Error('Failed to load shared receipt queue');
+  }
+  return res.json();
+}
+
+export async function uploadStagedReceipts(
+  files: File[],
+  bookNumber?: string,
+  deviceLabel?: string
+): Promise<CloudStagedItem[]> {
+  const formData = new FormData();
+  files.forEach((f) => formData.append('files', f));
+  if (bookNumber && bookNumber.trim()) {
+    formData.append('book_number', bookNumber.trim());
+  }
+  if (deviceLabel) {
+    formData.append('device_label', deviceLabel);
+  }
+
+  const res = await fetch(`${API_BASE}/ocr/staging`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '');
+    throw new Error(raw.slice(0, 200) || `Upload failed (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
+export async function updateStagedReceiptImage(
+  stagedId: number,
+  file: File
+): Promise<CloudStagedItem> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/ocr/staging/${stagedId}/image`, {
+    method: 'PUT',
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to save cropped image (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
+export async function deleteStagedReceipt(stagedId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/ocr/staging/${stagedId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Failed to remove staged receipt (HTTP ${res.status})`);
+  }
+}
+
+export async function processStagedReceiptOCR(
+  stagedId: number,
+  modelName: string = 'gemini-3.5-flash-lite',
+  skipTranscription: boolean = true
+): Promise<PipelineResult> {
+  const params = new URLSearchParams({
+    model_name: modelName,
+    skip_transcription: String(skipTranscription),
+  });
+  const res = await fetch(`${API_BASE}/ocr/staging/${stagedId}/process?${params.toString()}`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    let errorDetail = '';
+    const rawText = await res.text().catch(() => '');
+    try {
+      const err = JSON.parse(rawText);
+      errorDetail = typeof err.detail === 'string' ? err.detail : err.detail?.message || '';
+    } catch {
+      errorDetail = rawText ? rawText.slice(0, 250) : '';
+    }
+    throw new Error(errorDetail || `OCR failed (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
 export async function searchGothrams(query: string): Promise<GothramSearchItem[]> {
   if (!query || query.trim().length === 0) return [];
   const res = await fetch(`${API_BASE}/gothrams/search?q=${encodeURIComponent(query.trim())}&limit=15`);

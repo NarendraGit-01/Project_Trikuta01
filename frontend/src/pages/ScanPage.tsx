@@ -23,7 +23,15 @@ import {
   Plus,
   CheckCheck,
 } from 'lucide-react';
-import { processUploadOCR, autoCropImage } from '../services/api';
+import {
+  processUploadOCR,
+  autoCropImage,
+  listStagedReceipts,
+  uploadStagedReceipts,
+  updateStagedReceiptImage,
+  deleteStagedReceipt,
+  processStagedReceiptOCR,
+} from '../services/api';
 import { PipelineResult } from '../types';
 import { ManualCropper } from '../components/ManualCropper';
 import {
@@ -35,6 +43,66 @@ import {
   deleteStoredReceipts,
   clearAllStoredReceipts,
 } from '../services/receiptStore';
+
+async function compressImageForUpload(file: File): Promise<File> {
+  // Keep smaller files as-is; downscale huge phone photos (> 1.5 MB) to stay well below Vercel's 4.5 MB cap
+  if (file.size <= 1.5 * 1024 * 1024) return file;
+  return new Promise<File>((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 2400;
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (Math.max(w, h) > maxDim) {
+        const scale = maxDim / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        resolve(file);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(url);
+          if (blob && blob.size < file.size) {
+            const baseName = file.name.replace(/\.[^.]+$/, '') || 'receipt';
+            resolve(new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' }));
+          } else {
+            resolve(file);
+          }
+        },
+        'image/jpeg',
+        0.88
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
+async function resolveItemBlob(item: StoredReceiptItem): Promise<Blob> {
+  if (item.blob) return item.blob;
+  const fetchUrl = item.imageUrl || item.previewUrl;
+  if (!fetchUrl) {
+    throw new Error('Receipt image source is missing');
+  }
+  const res = await fetch(fetchUrl);
+  if (!res.ok) {
+    throw new Error(`Could not fetch receipt image (HTTP ${res.status})`);
+  }
+  return res.blob();
+}
 
 interface ScanPageProps {
   onOCRComplete: (
@@ -77,6 +145,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   });
   const [isCropping, setIsCropping] = useState<boolean>(false);
   const [isManualCropMode, setIsManualCropMode] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [skipTranscription, setSkipTranscription] = useState<boolean>(true);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
@@ -86,25 +155,65 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addMoreInputRef = useRef<HTMLInputElement>(null);
 
-  /* ── 1. LOAD FROM INDEXEDDB ON MOUNT ────────────────────── */
+  /* ── 1. LOAD SHARED CLOUD QUEUE + LOCAL CACHE ───────────── */
   const loadStoredQueue = async () => {
     setIsLoadingStore(true);
     try {
-      const allItems = await getAllStoredReceipts();
-      // Remove already-processed/saved items from the active scan queue
-      const alreadyProcessedIds = allItems
+      const [localItems, cloudItems] = await Promise.all([
+        getAllStoredReceipts().catch(() => [] as StoredReceiptItem[]),
+        listStagedReceipts().catch(() => null),
+      ]);
+
+      // Clean up any already-reviewed local cache entries
+      const reviewedIds = localItems
         .filter((r) => r.reviewed || r.savedReceiptId !== undefined)
         .map((r) => r.id);
-      if (alreadyProcessedIds.length > 0) {
-        await deleteStoredReceipts(alreadyProcessedIds).catch(() => {});
+      if (reviewedIds.length > 0) {
+        await deleteStoredReceipts(reviewedIds).catch(() => {});
       }
-      const activeItems = allItems.filter((r) => !r.reviewed && r.savedReceiptId === undefined);
-      setReceipts(activeItems);
-      if (activeItems.length > 0 && !selectedId) {
-        setSelectedId(activeItems[0].id);
+      const activeLocal = localItems.filter((r) => !r.reviewed && r.savedReceiptId === undefined);
+      const localMap = new Map(activeLocal.map((item) => [item.id, item]));
+
+      const merged: StoredReceiptItem[] = [];
+      if (cloudItems !== null) {
+        for (const c of cloudItems) {
+          const key = `staged_${c.id}`;
+          const cached = localMap.get(key);
+          merged.push({
+            id: key,
+            stagedId: c.id,
+            filename: c.filename,
+            fileSize: c.file_size,
+            blob: cached?.blob,
+            originalBlob: cached?.originalBlob,
+            previewUrl: cached?.blob ? cached.previewUrl : c.preview_url || c.image_url,
+            imageUrl: c.image_url,
+            bookNumber: c.book_number || undefined,
+            deviceLabel: c.device_label || undefined,
+            uploadedAt: new Date(c.created_at).getTime() || Date.now(),
+            rotation: cached?.rotation || 0,
+            status: cached?.result ? 'SUCCESS' : cached?.status === 'ERROR' ? 'ERROR' : 'PENDING',
+            result: cached?.result,
+            error: cached?.error,
+          });
+        }
+        // Keep any purely local offline receipts (not yet synced to cloud)
+        for (const loc of activeLocal) {
+          if (!loc.stagedId && !loc.id.startsWith('staged_')) {
+            merged.push(loc);
+          }
+        }
+      } else {
+        // Offline fallback if cloud endpoint unreachable
+        merged.push(...activeLocal);
+      }
+
+      setReceipts(merged);
+      if (merged.length > 0 && (!selectedId || !merged.some((m) => m.id === selectedId))) {
+        setSelectedId(merged[0].id);
       }
     } catch (err: any) {
-      console.error('Error loading stored receipts from IndexedDB:', err);
+      console.error('Error loading receipt queue:', err);
     } finally {
       setIsLoadingStore(false);
     }
@@ -193,36 +302,71 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     if (files.length === 0) return;
     setErrorNotice(null);
 
-    const now = Date.now();
-    const newItems: StoredReceiptItem[] = [];
     const bookNo = (bookNumberToAssign !== undefined ? bookNumberToAssign : activeBookNumber).trim();
+    const isMobile =
+      typeof window !== 'undefined' &&
+      (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768);
+    const deviceLabel = isMobile ? 'Mobile' : 'PC';
+
+    setUploadProgress({ current: 0, total: files.length });
+    const uploadedItems: StoredReceiptItem[] = [];
+    const offlineFallbackItems: StoredReceiptItem[] = [];
 
     for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const uniqueId = `rec_${now}_${i}_${Math.random().toString(36).substring(2, 7)}`;
-      newItems.push({
-        id: uniqueId,
-        filename: f.name,
-        fileSize: f.size,
-        blob: f,
-        previewUrl: URL.createObjectURL(f),
-        bookNumber: bookNo || undefined,
-        uploadedAt: now + i,
-        rotation: 0,
-        status: 'PENDING',
-      });
+      setUploadProgress({ current: i + 1, total: files.length });
+      const rawFile = files[i];
+      const compressed = await compressImageForUpload(rawFile);
+
+      try {
+        const cloudRes = await uploadStagedReceipts([compressed], bookNo, deviceLabel);
+        for (const c of cloudRes) {
+          const item: StoredReceiptItem = {
+            id: `staged_${c.id}`,
+            stagedId: c.id,
+            filename: c.filename,
+            fileSize: c.file_size,
+            blob: compressed,
+            originalBlob: rawFile,
+            previewUrl: URL.createObjectURL(compressed),
+            imageUrl: c.image_url,
+            bookNumber: c.book_number || undefined,
+            deviceLabel: c.device_label || deviceLabel,
+            uploadedAt: new Date(c.created_at).getTime() || Date.now() + i,
+            rotation: 0,
+            status: 'PENDING',
+          };
+          uploadedItems.push(item);
+          setReceipts((prev) => [...prev, item]);
+          await addStoredReceipts([item]).catch(() => {});
+        }
+      } catch (err: any) {
+        console.warn('Cloud staging upload failed for', rawFile.name, err);
+        setErrorNotice(
+          `Cloud sync warning (${rawFile.name}): ${err.message || 'Saved locally only'}`
+        );
+        const localItem: StoredReceiptItem = {
+          id: `rec_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 7)}`,
+          filename: rawFile.name,
+          fileSize: compressed.size,
+          blob: compressed,
+          originalBlob: rawFile,
+          previewUrl: URL.createObjectURL(compressed),
+          bookNumber: bookNo || undefined,
+          deviceLabel,
+          uploadedAt: Date.now() + i,
+          rotation: 0,
+          status: 'PENDING',
+        };
+        offlineFallbackItems.push(localItem);
+        setReceipts((prev) => [...prev, localItem]);
+        await addStoredReceipts([localItem]).catch(() => {});
+      }
     }
 
-    // Persist immediately to IndexedDB
-    try {
-      await addStoredReceipts(newItems);
-      setReceipts((prev) => [...prev, ...newItems]);
-      if (newItems.length > 0) {
-        setSelectedId(newItems[0].id);
-      }
-    } catch (err: any) {
-      console.error('Failed to save receipts in IndexedDB:', err);
-      setErrorNotice('Could not persist receipts to local storage: ' + (err.message || 'Storage error'));
+    setUploadProgress(null);
+    const firstAdded = uploadedItems[0] || offlineFallbackItems[0];
+    if (firstAdded) {
+      setSelectedId(firstAdded.id);
     }
   };
 
@@ -282,10 +426,14 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const handleDeleteItem = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
+      const target = receipts.find((r) => r.id === id);
+      if (target?.stagedId) {
+        await deleteStagedReceipt(target.stagedId).catch(() => {});
+      }
       await deleteStoredReceipt(id);
-      setReceipts((prev) => prev.filter((r) => r.id !== id));
+      const remaining = receipts.filter((r) => r.id !== id);
+      setReceipts(remaining);
       if (selectedId === id) {
-        const remaining = receipts.filter((r) => r.id !== id);
         setSelectedId(remaining.length > 0 ? remaining[0].id : null);
       }
     } catch (err: any) {
@@ -294,15 +442,21 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   };
 
   const handleClearCompleted = async () => {
-    const completedIds = receipts.filter((r) => r.status === 'SUCCESS' || r.reviewed).map((r) => r.id);
+    const completed = receipts.filter((r) => r.status === 'SUCCESS' || r.reviewed);
+    const completedIds = completed.map((r) => r.id);
     if (completedIds.length === 0) return;
-    if (!window.confirm(`Clear ${completedIds.length} processed receipts from the local queue?`)) return;
+    if (!window.confirm(`Clear ${completedIds.length} extracted receipts from the queue?`)) return;
 
     try {
+      await Promise.all(
+        completed
+          .filter((r) => r.stagedId)
+          .map((r) => deleteStagedReceipt(r.stagedId!).catch(() => {}))
+      );
       await deleteStoredReceipts(completedIds);
-      setReceipts((prev) => prev.filter((r) => !completedIds.includes(r.id)));
+      const remaining = receipts.filter((r) => !completedIds.includes(r.id));
+      setReceipts(remaining);
       if (selectedId && completedIds.includes(selectedId)) {
-        const remaining = receipts.filter((r) => !completedIds.includes(r.id));
         setSelectedId(remaining.length > 0 ? remaining[0].id : null);
       }
     } catch (err: any) {
@@ -312,9 +466,14 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 
   const handleClearAll = async () => {
     if (receipts.length === 0) return;
-    if (!window.confirm(`Are you sure you want to remove all ${receipts.length} receipts from the queue?`)) return;
+    if (!window.confirm(`Are you sure you want to remove all ${receipts.length} receipts from the shared queue?`)) return;
 
     try {
+      await Promise.all(
+        receipts
+          .filter((r) => r.stagedId)
+          .map((r) => deleteStagedReceipt(r.stagedId!).catch(() => {}))
+      );
       await clearAllStoredReceipts();
       setReceipts([]);
       setSelectedId(null);
@@ -338,35 +497,39 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   /* ── 6. CROP ACTIVE RECEIPT (MANUAL & AUTO) ─────────────── */
   const saveCroppedBlobForSelected = async (croppedBlob: Blob) => {
     if (!selectedReceipt) return;
-    const origBlob = selectedReceipt.originalBlob || selectedReceipt.blob;
-    const newPreviewUrl = URL.createObjectURL(croppedBlob);
+    setIsCropping(true);
+    try {
+      const origBlob = selectedReceipt.originalBlob || selectedReceipt.blob;
+      let newPreviewUrl = URL.createObjectURL(croppedBlob);
+      let newImageUrl = selectedReceipt.imageUrl;
 
-    setReceipts((prev) =>
-      prev.map((r) =>
-        r.id === selectedReceipt.id
-          ? {
-              ...r,
-              blob: croppedBlob,
-              originalBlob: origBlob,
-              fileSize: croppedBlob.size,
-              previewUrl: newPreviewUrl,
-              rotation: 0,
-              status: 'PENDING',
-              result: undefined,
-              error: undefined,
-            }
-          : r
-      )
-    );
-    await updateStoredReceipt(selectedReceipt.id, {
-      blob: croppedBlob,
-      originalBlob: origBlob,
-      fileSize: croppedBlob.size,
-      rotation: 0,
-      status: 'PENDING',
-      result: undefined,
-      error: undefined,
-    });
+      if (selectedReceipt.stagedId) {
+        const cropFile = new File([croppedBlob], selectedReceipt.filename, {
+          type: croppedBlob.type || 'image/jpeg',
+        });
+        const updatedCloud = await updateStagedReceiptImage(selectedReceipt.stagedId, cropFile);
+        newImageUrl = `${updatedCloud.image_url}?t=${Date.now()}`;
+      }
+
+      const updatedItem: StoredReceiptItem = {
+        ...selectedReceipt,
+        blob: croppedBlob,
+        originalBlob: origBlob,
+        fileSize: croppedBlob.size,
+        previewUrl: newPreviewUrl,
+        imageUrl: newImageUrl,
+        rotation: 0,
+        status: 'PENDING',
+        result: undefined,
+        error: undefined,
+      };
+      setReceipts((prev) => prev.map((r) => (r.id === selectedReceipt.id ? updatedItem : r)));
+      await addStoredReceipts([updatedItem]).catch(() => {});
+    } catch (err: any) {
+      setErrorNotice(err.message || 'Could not save cropped image');
+    } finally {
+      setIsCropping(false);
+    }
   };
 
   const handleApplyManualCrop = async (croppedBlob: Blob) => {
@@ -379,44 +542,35 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     const orig = selectedReceipt.originalBlob;
     const origUrl = URL.createObjectURL(orig);
     setIsManualCropMode(false);
-    setReceipts((prev) =>
-      prev.map((r) =>
-        r.id === selectedReceipt.id
-          ? {
-              ...r,
-              blob: orig,
-              originalBlob: undefined,
-              fileSize: orig.size,
-              previewUrl: origUrl,
-              rotation: 0,
-              status: 'PENDING',
-              result: undefined,
-              error: undefined,
-            }
-          : r
-      )
-    );
-    await updateStoredReceipt(selectedReceipt.id, {
+    if (selectedReceipt.stagedId) {
+      const origFile = new File([orig], selectedReceipt.filename, { type: orig.type || 'image/jpeg' });
+      await updateStagedReceiptImage(selectedReceipt.stagedId, origFile).catch(() => {});
+    }
+    const updatedItem: StoredReceiptItem = {
+      ...selectedReceipt,
       blob: orig,
       originalBlob: undefined,
       fileSize: orig.size,
+      previewUrl: origUrl,
       rotation: 0,
       status: 'PENDING',
       result: undefined,
       error: undefined,
-    });
+    };
+    setReceipts((prev) => prev.map((r) => (r.id === selectedReceipt.id ? updatedItem : r)));
+    await addStoredReceipts([updatedItem]).catch(() => {});
   };
 
   const handleAutoCropSelected = async () => {
     if (!selectedReceipt) return;
     setIsCropping(true);
     try {
-      const file = new File([selectedReceipt.blob], selectedReceipt.filename, {
-        type: selectedReceipt.blob.type || 'image/jpeg',
+      const srcBlob = await resolveItemBlob(selectedReceipt);
+      const file = new File([srcBlob], selectedReceipt.filename, {
+        type: srcBlob.type || 'image/jpeg',
       });
       const cropRes = await autoCropImage(file);
       if (cropRes && cropRes.url) {
-        // Fetch cropped blob to store persistently
         const res = await fetch(cropRes.url);
         const croppedBlob = await res.blob();
         await saveCroppedBlobForSelected(croppedBlob);
@@ -456,75 +610,84 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     await updateStoredReceipt(item.id, { status: 'PROCESSING', error: undefined });
 
     try {
-      let uploadBlob = item.blob;
       const normRot = ((item.rotation % 360) + 360) % 360;
-      if (normRot !== 0) {
-        uploadBlob = await new Promise<Blob>((resolve) => {
-          const imgUrl = URL.createObjectURL(item.blob);
-          const img = new Image();
-          img.onload = () => {
-            const swap = normRot === 90 || normRot === 270;
-            const cw = swap ? img.naturalHeight : img.naturalWidth;
-            const ch = swap ? img.naturalWidth : img.naturalHeight;
-            const canvas = document.createElement('canvas');
-            canvas.width = cw;
-            canvas.height = ch;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.translate(cw / 2, ch / 2);
-              ctx.rotate((normRot * Math.PI) / 180);
-              ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-              canvas.toBlob(
-                (b) => {
-                  URL.revokeObjectURL(imgUrl);
-                  resolve(b || item.blob);
-                },
-                'image/jpeg',
-                0.95
-              );
-            } else {
+      let result: PipelineResult;
+
+      if (item.stagedId && normRot === 0) {
+        // Fast server-side OCR directly from cloud storage
+        result = await processStagedReceiptOCR(item.stagedId, activeModel, skipTranscription);
+      } else {
+        const srcBlob = await resolveItemBlob(item);
+        let uploadBlob = srcBlob;
+        if (normRot !== 0) {
+          uploadBlob = await new Promise<Blob>((resolve) => {
+            const imgUrl = URL.createObjectURL(srcBlob);
+            const img = new Image();
+            img.onload = () => {
+              const swap = normRot === 90 || normRot === 270;
+              const cw = swap ? img.naturalHeight : img.naturalWidth;
+              const ch = swap ? img.naturalWidth : img.naturalHeight;
+              const canvas = document.createElement('canvas');
+              canvas.width = cw;
+              canvas.height = ch;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.translate(cw / 2, ch / 2);
+                ctx.rotate((normRot * Math.PI) / 180);
+                ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+                canvas.toBlob(
+                  (b) => {
+                    URL.revokeObjectURL(imgUrl);
+                    resolve(b || srcBlob);
+                  },
+                  'image/jpeg',
+                  0.95
+                );
+              } else {
+                URL.revokeObjectURL(imgUrl);
+                resolve(srcBlob);
+              }
+            };
+            img.onerror = () => {
               URL.revokeObjectURL(imgUrl);
-              resolve(item.blob);
-            }
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(imgUrl);
-            resolve(item.blob);
-          };
-          img.src = imgUrl;
+              resolve(srcBlob);
+            };
+            img.src = imgUrl;
+          });
+        }
+
+        const file = new File([uploadBlob], item.filename, {
+          type: uploadBlob.type || 'image/jpeg',
         });
+
+        if (item.stagedId) {
+          await updateStagedReceiptImage(item.stagedId, file).catch(() => {});
+          result = await processStagedReceiptOCR(item.stagedId, activeModel, skipTranscription);
+        } else {
+          result = await processUploadOCR(
+            file,
+            activeModel,
+            skipTranscription,
+            item.bookNumber || undefined
+          );
+        }
       }
-
-      const file = new File([uploadBlob], item.filename, {
-        type: uploadBlob.type || 'image/jpeg',
-      });
-
-      const result: PipelineResult = await processUploadOCR(
-        file,
-        activeModel,
-        skipTranscription,
-        item.bookNumber || undefined
-      );
 
       clearInterval(timer);
       setIsProcessingSingle(false);
 
-      // Update item with result in state and IndexedDB
-      setReceipts((prev) =>
-        prev.map((r) =>
-          r.id === item.id
-            ? { ...r, status: 'SUCCESS', result, error: undefined }
-            : r
-        )
-      );
-      await updateStoredReceipt(item.id, {
+      const updatedItem: StoredReceiptItem = {
+        ...item,
         status: 'SUCCESS',
         result,
         error: undefined,
-      });
+      };
+      setReceipts((prev) => prev.map((r) => (r.id === item.id ? updatedItem : r)));
+      await addStoredReceipts([updatedItem]).catch(() => {});
 
       if (autoNavigateToReview) {
-        const finalUrl = item.previewUrl || URL.createObjectURL(item.blob);
+        const finalUrl =
+          item.previewUrl || item.imageUrl || (item.blob ? URL.createObjectURL(item.blob) : '');
         onOCRComplete(result, finalUrl, item.filename, item.id);
       }
     } catch (err: any) {
@@ -533,10 +696,9 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       const errMsg = err.message || 'OCR processing failed. Please verify API key and connection.';
       setErrorNotice(errMsg);
 
-      setReceipts((prev) =>
-        prev.map((r) => (r.id === item.id ? { ...r, status: 'ERROR', error: errMsg } : r))
-      );
-      await updateStoredReceipt(item.id, { status: 'ERROR', error: errMsg });
+      const errItem: StoredReceiptItem = { ...item, status: 'ERROR', error: errMsg };
+      setReceipts((prev) => prev.map((r) => (r.id === item.id ? errItem : r)));
+      await addStoredReceipts([errItem]).catch(() => {});
     }
   };
 
@@ -568,7 +730,8 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   /* ── 9. VIEW / REVIEW PROCESSED RECEIPT ──────────────────── */
   const handleOpenReview = (item: StoredReceiptItem) => {
     if (item.result) {
-      const finalUrl = item.previewUrl || URL.createObjectURL(item.blob);
+      const finalUrl =
+        item.previewUrl || item.imageUrl || (item.blob ? URL.createObjectURL(item.blob) : '');
       onOCRComplete(item.result, finalUrl, item.filename, item.id);
     }
   };
@@ -739,8 +902,10 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                 </>
               )}
               <span>•</span>
-              <span className="text-gray-400 text-[11px]">
-                Saved locally in browser (retained on refresh)
+              <span className="text-emerald-700 text-[11px] font-medium">
+                {uploadProgress
+                  ? `Uploading ${uploadProgress.current}/${uploadProgress.total} to shared cloud queue...`
+                  : 'Cloud-synced across Mobile & PC'}
               </span>
             </div>
           </div>
@@ -961,16 +1126,16 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                 )}
 
                 {selectedReceipt ? (
-                  isManualCropMode && selectedReceipt.previewUrl ? (
+                  isManualCropMode && (selectedReceipt.imageUrl || selectedReceipt.previewUrl) ? (
                     <ManualCropper
-                      imageUrl={selectedReceipt.previewUrl}
+                      imageUrl={selectedReceipt.imageUrl || selectedReceipt.previewUrl || ''}
                       rotation={selectedReceipt.rotation}
                       onApplyCrop={handleApplyManualCrop}
                       onCancel={() => setIsManualCropMode(false)}
                     />
                   ) : (
                     <img
-                      src={selectedReceipt.previewUrl}
+                      src={selectedReceipt.previewUrl || selectedReceipt.imageUrl}
                       alt={selectedReceipt.filename}
                       style={{ transform: `rotate(${selectedReceipt.rotation}deg)` }}
                       className="max-h-[580px] max-w-full w-auto object-contain rounded-lg shadow-2xl transition-transform duration-200"
@@ -1095,8 +1260,18 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                     </h3>
                   </div>
 
-                  {/* Clear Actions */}
+                  {/* Clear & Sync Actions */}
                   <div className="flex items-center space-x-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={loadStoredQueue}
+                      disabled={isLoadingStore}
+                      className="flex items-center space-x-1 text-amber-700 hover:text-amber-900 font-semibold px-1.5 py-0.5 rounded bg-amber-50 hover:bg-amber-100 border border-amber-200"
+                      title="Refresh shared queue from Mobile / Cloud"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isLoadingStore ? 'animate-spin' : ''}`} />
+                      <span>Sync</span>
+                    </button>
                     {stats.success > 0 && (
                       <button
                         onClick={handleClearCompleted}
@@ -1229,10 +1404,15 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                             </button>
                           </div>
 
-                          <div className="flex items-center space-x-2 mt-0.5 text-[10px] text-gray-500">
+                          <div className="flex items-center space-x-1.5 mt-0.5 text-[10px] text-gray-500">
                             {item.bookNumber && (
                               <span className="font-mono bg-gray-100 text-gray-700 px-1.5 py-0.2 rounded font-semibold">
                                 B:{item.bookNumber}
+                              </span>
+                            )}
+                            {item.deviceLabel && (
+                              <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.2 rounded font-medium">
+                                {item.deviceLabel}
                               </span>
                             )}
                             <span>{(item.fileSize / 1024 / 1024).toFixed(1)} MB</span>

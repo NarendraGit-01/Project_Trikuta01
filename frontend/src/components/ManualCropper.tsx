@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, X, Crop } from 'lucide-react';
+import { Check, X, Crop, RotateCcw } from 'lucide-react';
 
 interface CropRect {
   x: number; // percentage 0-100
@@ -15,11 +15,7 @@ type DragMode =
   | 'nw'
   | 'ne'
   | 'sw'
-  | 'se'
-  | 'n'
-  | 's'
-  | 'w'
-  | 'e';
+  | 'se';
 
 interface ManualCropperProps {
   imageUrl: string;
@@ -36,7 +32,7 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
 }) => {
   const [uprightUrl, setUprightUrl] = useState<string>('');
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-  const [crop, setCrop] = useState<CropRect>({ x: 5, y: 10, w: 90, h: 80 });
+  const [crop, setCrop] = useState<CropRect | null>(null);
   const [isApplying, setIsApplying] = useState(false);
 
   const imgRef = useRef<HTMLImageElement>(null);
@@ -50,7 +46,7 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
     mode: null,
     startX: 0,
     startY: 0,
-    startCrop: { x: 5, y: 10, w: 90, h: 80 },
+    startCrop: { x: 0, y: 0, w: 0, h: 0 },
   });
 
   // Normalize image orientation before cropping so coordinates map 1:1
@@ -103,11 +99,18 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
     const pctX = clamp(((e.clientX - rect.left) / rect.width) * 100, 0, 100);
     const pctY = clamp(((e.clientY - rect.top) / rect.height) * 100, 0, 100);
 
+    const initialBox =
+      mode === 'draw' ? { x: pctX, y: pctY, w: 0, h: 0 } : crop ? { ...crop } : { x: pctX, y: pctY, w: 0, h: 0 };
+
+    if (mode === 'draw') {
+      setCrop(initialBox);
+    }
+
     dragState.current = {
       mode,
       startX: pctX,
       startY: pctY,
-      startCrop: mode === 'draw' ? { x: pctX, y: pctY, w: 0, h: 0 } : { ...crop },
+      startCrop: initialBox,
     };
   };
 
@@ -123,13 +126,13 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
       const curY = clamp(((e.clientY - rect.top) / rect.height) * 100, 0, 100);
       const dx = curX - startX;
       const dy = curY - startY;
-      const minSize = 5; // minimum 5% box size
+      const minSize = 3;
 
       if (mode === 'draw') {
         const x = Math.min(startX, curX);
         const y = Math.min(startY, curY);
-        const w = Math.max(minSize, Math.abs(curX - startX));
-        const h = Math.max(minSize, Math.abs(curY - startY));
+        const w = Math.abs(curX - startX);
+        const h = Math.abs(curY - startY);
         setCrop({ x, y, w: Math.min(w, 100 - x), h: Math.min(h, 100 - y) });
         return;
       }
@@ -162,6 +165,9 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
     };
 
     const handlePointerUp = () => {
+      if (dragState.current.mode === 'draw') {
+        setCrop((curr) => (curr && curr.w >= 3 && curr.h >= 3 ? curr : null));
+      }
       dragState.current.mode = null;
     };
 
@@ -173,8 +179,10 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
     };
   }, []);
 
+  const hasValidSelection = !!crop && crop.w >= 3 && crop.h >= 3;
+
   const handleApply = () => {
-    if (!imgRef.current || naturalSize.w === 0 || naturalSize.h === 0) return;
+    if (!imgRef.current || !hasValidSelection || !crop || naturalSize.w === 0 || naturalSize.h === 0) return;
     setIsApplying(true);
 
     const sx = Math.round((crop.x / 100) * naturalSize.w);
@@ -210,19 +218,22 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
       <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-slate-800/95 border border-amber-500/40 rounded-xl px-3 py-2 text-xs text-white">
         <div className="flex items-center space-x-2">
           <Crop className="w-4 h-4 text-amber-400" />
-          <span className="font-bold text-amber-200">Manual Crop Mode</span>
+          <span className="font-bold text-amber-200">Select Crop Area</span>
           <span className="text-[11px] text-slate-300 hidden sm:inline">
-            • Drag corners or edges to crop strictly around the receipt slip
+            • {hasValidSelection ? 'Area selected! Click Apply Crop or drag outside to re-select' : 'Click & drag directly over the receipt area to keep'}
           </span>
         </div>
         <div className="flex items-center space-x-2">
-          <button
-            type="button"
-            onClick={() => setCrop({ x: 5, y: 10, w: 90, h: 80 })}
-            className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-[11px] font-semibold text-slate-200"
-          >
-            Reset Box
-          </button>
+          {hasValidSelection && (
+            <button
+              type="button"
+              onClick={() => setCrop(null)}
+              className="flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-[11px] font-semibold text-slate-200"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Re-select</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onCancel}
@@ -234,8 +245,8 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
           <button
             type="button"
             onClick={handleApply}
-            disabled={isApplying || !uprightUrl}
-            className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-[11px] font-bold text-white shadow"
+            disabled={isApplying || !uprightUrl || !hasValidSelection}
+            className="flex items-center space-x-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-[11px] font-bold text-white shadow"
           >
             <Check className="w-3.5 h-3.5" />
             <span>{isApplying ? 'Cropping...' : 'Apply Crop'}</span>
@@ -243,7 +254,7 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
         </div>
       </div>
 
-      {/* Interactive Crop Canvas */}
+      {/* Interactive Selection Canvas */}
       <div className="flex-1 flex items-center justify-center w-full overflow-hidden">
         {uprightUrl ? (
           <div
@@ -259,81 +270,56 @@ export const ManualCropper: React.FC<ManualCropperProps> = ({
               className="max-h-[500px] max-w-full w-auto block pointer-events-none"
             />
 
-            {/* 4 Shaded Outside Overlays */}
-            <div
-              className="absolute left-0 right-0 top-0 bg-black/55 pointer-events-none"
-              style={{ height: `${crop.y}%` }}
-            />
-            <div
-              className="absolute left-0 right-0 bottom-0 bg-black/55 pointer-events-none"
-              style={{ height: `${Math.max(0, 100 - crop.y - crop.h)}%` }}
-            />
-            <div
-              className="absolute left-0 bg-black/55 pointer-events-none"
-              style={{ top: `${crop.y}%`, height: `${crop.h}%`, width: `${crop.x}%` }}
-            />
-            <div
-              className="absolute right-0 bg-black/55 pointer-events-none"
-              style={{
-                top: `${crop.y}%`,
-                height: `${crop.h}%`,
-                width: `${Math.max(0, 100 - crop.x - crop.w)}%`,
-              }}
-            />
+            {!crop && (
+              <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none">
+                <div className="bg-slate-900/85 border border-amber-400/60 text-amber-200 text-xs font-semibold px-4 py-2 rounded-full shadow-lg">
+                  Drag a rectangle over the receipt slip to crop
+                </div>
+              </div>
+            )}
 
-            {/* Active Crop Box */}
-            <div
-              onPointerDown={(e) => startDrag('move', e)}
-              style={{
-                left: `${crop.x}%`,
-                top: `${crop.y}%`,
-                width: `${crop.w}%`,
-                height: `${crop.h}%`,
-              }}
-              className="absolute border-2 border-amber-400 cursor-move shadow-[0_0_0_1px_rgba(0,0,0,0.5)]"
-            >
-              {/* Rule-of-thirds guides */}
-              <div className="absolute inset-x-0 top-1/3 border-t border-white/25 pointer-events-none" />
-              <div className="absolute inset-x-0 top-2/3 border-t border-white/25 pointer-events-none" />
-              <div className="absolute inset-y-0 left-1/3 border-l border-white/25 pointer-events-none" />
-              <div className="absolute inset-y-0 left-2/3 border-l border-white/25 pointer-events-none" />
+            {crop && (
+              <>
+                {/* 4 Shaded Outside Overlays */}
+                <div
+                  className="absolute left-0 right-0 top-0 bg-black/55 pointer-events-none"
+                  style={{ height: `${crop.y}%` }}
+                />
+                <div
+                  className="absolute left-0 right-0 bottom-0 bg-black/55 pointer-events-none"
+                  style={{ height: `${Math.max(0, 100 - crop.y - crop.h)}%` }}
+                />
+                <div
+                  className="absolute left-0 bg-black/55 pointer-events-none"
+                  style={{ top: `${crop.y}%`, height: `${crop.h}%`, width: `${crop.x}%` }}
+                />
+                <div
+                  className="absolute right-0 bg-black/55 pointer-events-none"
+                  style={{
+                    top: `${crop.y}%`,
+                    height: `${crop.h}%`,
+                    width: `${Math.max(0, 100 - crop.x - crop.w)}%`,
+                  }}
+                />
 
-              {/* Corner Resize Handles */}
-              <div
-                onPointerDown={(e) => startDrag('nw', e)}
-                className="absolute -top-2 -left-2 w-4 h-4 bg-amber-400 border-2 border-slate-900 rounded-sm cursor-nwse-resize"
-              />
-              <div
-                onPointerDown={(e) => startDrag('ne', e)}
-                className="absolute -top-2 -right-2 w-4 h-4 bg-amber-400 border-2 border-slate-900 rounded-sm cursor-nesw-resize"
-              />
-              <div
-                onPointerDown={(e) => startDrag('sw', e)}
-                className="absolute -bottom-2 -left-2 w-4 h-4 bg-amber-400 border-2 border-slate-900 rounded-sm cursor-nesw-resize"
-              />
-              <div
-                onPointerDown={(e) => startDrag('se', e)}
-                className="absolute -bottom-2 -right-2 w-4 h-4 bg-amber-400 border-2 border-slate-900 rounded-sm cursor-nwse-resize"
-              />
-
-              {/* Edge Resize Handles */}
-              <div
-                onPointerDown={(e) => startDrag('n', e)}
-                className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-6 h-3 bg-amber-400 border border-slate-900 rounded-full cursor-ns-resize"
-              />
-              <div
-                onPointerDown={(e) => startDrag('s', e)}
-                className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-6 h-3 bg-amber-400 border border-slate-900 rounded-full cursor-ns-resize"
-              />
-              <div
-                onPointerDown={(e) => startDrag('w', e)}
-                className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-6 bg-amber-400 border border-slate-900 rounded-full cursor-ew-resize"
-              />
-              <div
-                onPointerDown={(e) => startDrag('e', e)}
-                className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-6 bg-amber-400 border border-slate-900 rounded-full cursor-ew-resize"
-              />
-            </div>
+                {/* Selected Crop Box */}
+                <div
+                  onPointerDown={(e) => startDrag('move', e)}
+                  style={{
+                    left: `${crop.x}%`,
+                    top: `${crop.y}%`,
+                    width: `${crop.w}%`,
+                    height: `${crop.h}%`,
+                  }}
+                  className="absolute border-2 border-amber-400 cursor-move shadow-[0_0_0_1px_rgba(0,0,0,0.5)]"
+                >
+                  <div className="absolute -top-2 -left-2 w-3.5 h-3.5 bg-amber-400 border border-slate-900 rounded-sm cursor-nwse-resize" onPointerDown={(e) => startDrag('nw', e)} />
+                  <div className="absolute -top-2 -right-2 w-3.5 h-3.5 bg-amber-400 border border-slate-900 rounded-sm cursor-nesw-resize" onPointerDown={(e) => startDrag('ne', e)} />
+                  <div className="absolute -bottom-2 -left-2 w-3.5 h-3.5 bg-amber-400 border border-slate-900 rounded-sm cursor-nesw-resize" onPointerDown={(e) => startDrag('sw', e)} />
+                  <div className="absolute -bottom-2 -right-2 w-3.5 h-3.5 bg-amber-400 border border-slate-900 rounded-sm cursor-nwse-resize" onPointerDown={(e) => startDrag('se', e)} />
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div className="text-xs text-slate-400">Preparing image for crop...</div>
