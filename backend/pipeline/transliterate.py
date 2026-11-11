@@ -20,8 +20,9 @@ TE_VOWELS: Dict[str, str] = {
 TE_MATRAS: Dict[str, str] = {
     'ా': 'aa', 'ి': 'i', 'ీ': 'ee', 'ు': 'u', 'ూ': 'oo',
     'ృ': 'ru', 'ె': 'e', 'ే': 'e', 'ై': 'ai', 'ొ': 'o', 'ో': 'o', 'ౌ': 'au',
-    'ం': 'n', 'ః': 'h', '్': '',
+    '్': '',
 }
+TELUGU_LABIALS = {'ప', 'ఫ', 'బ', 'భ', 'మ'}
 
 # Telugu Consonants to English
 TE_CONSONANTS: Dict[str, str] = {
@@ -155,6 +156,12 @@ def transliterate_te_to_en(text: str) -> str:
                 out.append(base + 'a')
         elif c in TE_MATRAS:
             out.append(TE_MATRAS[c])
+        elif c == 'ం':
+            # Anusvara: 'm' at word end or before labials, 'n' before other consonants
+            is_word_end = not nxt or not ('\u0C00' <= nxt <= '\u0C7F')
+            out.append('m' if (is_word_end or nxt in TELUGU_LABIALS) else 'n')
+        elif c == 'ః':
+            out.append('h')
         else:
             out.append(c)
         i += 1

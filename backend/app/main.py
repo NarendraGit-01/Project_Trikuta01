@@ -73,15 +73,17 @@ app = FastAPI(
     description="Backend API for Temple Receipt OCR, Data Extraction & Pooja Management System",
     version="1.0.0",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
-# CORS Middleware
+# CORS Middleware — explicit origins required when allow_credentials=True
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,   # No cookie auth used; set False so wildcard origins work
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 # Mount Reference Images for sample previews
@@ -111,15 +113,6 @@ if not (frontend_dist / "index.html").exists():
 assets_dir = frontend_dist / "assets"
 if assets_dir.exists():
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-
-
-@app.get("/api/index.py")
-def handle_vercel_direct():
-    return {
-        "status": "healthy",
-        "app": settings.APP_NAME,
-        "api_v1": "/api/v1",
-    }
 
 
 @app.get("/")

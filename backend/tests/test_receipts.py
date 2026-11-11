@@ -64,13 +64,14 @@ def test_receipt_lifecycle(client, staff_token):
     assert res_dup.status_code == 200
     assert res_dup.json()["is_duplicate"] is True
 
-    # 3. Conflict on duplicate create
-    res_conflict = client.post(
+    # 3. Graceful upsert on duplicate create
+    res_upsert = client.post(
         "/api/v1/receipts",
         json=receipt_payload,
         headers={"Authorization": f"Bearer {staff_token}"}
     )
-    assert res_conflict.status_code == 409
+    assert res_upsert.status_code == 200
+    assert res_upsert.json()["id"] == receipt_id
 
     # 4. Update/Correct a field (e.g. correct pincode)
     update_payload = {

@@ -40,7 +40,14 @@ class Settings(BaseSettings):
     RECEIPT_UNIQUENESS_POLICY: str = "yearly"
 
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173", "*"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://trikuta.vercel.app",
+        "https://trikuta-git-main-narendragit-01.vercel.app",
+        "*",
+    ]
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -36,6 +36,21 @@ def _detect_language(text: str) -> Optional[str]:
             pass
     return None
 
+def _extract_text(response) -> str:
+    """Safely extract string text from LangChain AIMessage content (str or list of parts)."""
+    content = getattr(response, "content", response)
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+            elif isinstance(item, str):
+                parts.append(item)
+            else:
+                parts.append(str(item))
+        return " ".join(parts).strip()
+    return str(content).strip()
+
 def _translate_with_gemini(text: str, target_lang: str) -> str:
     """Translate *text* to *target_lang* ('en' or 'te') using Gemini.
     Simple prompt – Gemini will return the translated string.
@@ -46,7 +61,7 @@ def _translate_with_gemini(text: str, target_lang: str) -> str:
     else:
         prompt = f"Translate the following English text to Telugu, preserving proper names: {text}"
     response = llm.invoke([{"role": "user", "content": prompt}])
-    return getattr(response, "content", str(response)).strip()
+    return _extract_text(response)
 
 def _normalize_name(name: str, source_lang: str) -> str:
     """Normalize a name using Gemini to a clean English spelling.
@@ -57,7 +72,7 @@ def _normalize_name(name: str, source_lang: str) -> str:
     if source_lang == 'te':
         prompt = f"Give the canonical English spelling for the Telugu name '{name}'."
         response = llm.invoke([{"role": "user", "content": prompt}])
-        return getattr(response, "content", str(response)).strip()
+        return _extract_text(response)
     return name
 
 def apply_translation(result: PipelineResult) -> PipelineResult:
@@ -72,13 +87,6 @@ def apply_translation(result: PipelineResult) -> PipelineResult:
                 result.address_en = _translate_with_gemini(result.address, target_lang='en')
             elif lang == 'en' and not getattr(result, "address_te", None):
                 result.address_te = _translate_with_gemini(result.address, target_lang='te')
-        # Gothram final
-        if getattr(result, "gothram_final", None):
-            lang = _detect_language(result.gothram_final)
-            if lang == 'te' and not getattr(result, "gothram_en", None):
-                result.gothram_en = _translate_with_gemini(result.gothram_final, target_lang='en')
-            elif lang == 'en' and not getattr(result, "gothram_te", None):
-                result.gothram_te = _translate_with_gemini(result.gothram_final, target_lang='te')
         # People – given_name / surname handling
         for person in getattr(result, "people", []):
             # given name

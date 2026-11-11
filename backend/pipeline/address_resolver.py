@@ -190,7 +190,7 @@ def standardize_andhra_telangana_address(raw_text: str, pin: Optional[str] = Non
     # Expand known abbreviations
     cleaned_te = raw_text
     abbreviations = [
-        (r"\bK\.P\.\s*పురం\b", "కపిలేశ్వరపురం"),
+        (r"\bK\.P\.\s*పురం", "కపిలేశ్వరపురం"),
         (r"\bK\.P\.\s*Puram\b", "Kapileswarapuram"),
         (r"\bD\.No[:\.]?", "డి.నెం:"),
         (r"\bOpp[:\.]?", "ఎదురుగా"),

@@ -20,8 +20,10 @@ const TE_TO_EN_VOWELS: Record<string, string> = {
 const TE_MATRAS: Record<string, string> = {
   'ా': 'aa', 'ి': 'i', 'ీ': 'ee', 'ు': 'u', 'ూ': 'oo',
   'ృ': 'ru', 'ె': 'e', 'ే': 'e', 'ై': 'ai', 'ొ': 'o', 'ో': 'o', 'ౌ': 'au',
-  'ం': 'n', 'ః': 'h', '్': '',
+  '్': '',
 };
+
+const TELUGU_LABIALS = new Set(['ప', 'ఫ', 'బ', 'భ', 'మ']);
 
 const TE_CONSONANTS: Record<string, string> = {
   'క': 'k', 'ఖ': 'kh', 'గ': 'g', 'ఘ': 'gh', 'ఙ': 'ng',
@@ -130,8 +132,13 @@ export function transliterateTeluguToEnglish(text: string): string {
       } else {
         out.push(base + 'a');
       }
-    } else if (TE_MATRAS[c]) {
+    } else if (TE_MATRAS[c] !== undefined) {
       out.push(TE_MATRAS[c]);
+    } else if (c === 'ం') {
+      const isWordEnd = !nxt || !/[\u0C00-\u0C7F]/.test(nxt);
+      out.push(isWordEnd || TELUGU_LABIALS.has(nxt) ? 'm' : 'n');
+    } else if (c === 'ః') {
+      out.push('h');
     } else {
       out.push(c);
     }
