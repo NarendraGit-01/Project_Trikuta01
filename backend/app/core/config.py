@@ -27,8 +27,8 @@ class Settings(BaseSettings):
 
     # AI Configuration (Gemini)
     GOOGLE_API_KEY: str = ""
-    GEMINI_PRIMARY_MODEL: str = "gemini-3.5-flash"
-    GEMINI_FALLBACK_MODEL: str = "gemini-2.5-flash"
+    GEMINI_PRIMARY_MODEL: str = "gemini-2.5-flash"
+    GEMINI_FALLBACK_MODEL: str = "gemini-2.0-flash"
     GEMINI_ROUTING_MODEL: str = "gemini-2.5-flash-lite"
 
     # Temple Config

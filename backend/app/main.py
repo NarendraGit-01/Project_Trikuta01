@@ -11,6 +11,12 @@ from backend.app.core.database import Base, SessionLocal, engine
 from backend.app.core.security import get_password_hash
 from backend.app.models.user import User
 
+# Ensure database tables exist immediately upon module load
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as _db_init_err:
+    print(f"Notice: Initial table check deferred: {_db_init_err}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
