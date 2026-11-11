@@ -24,7 +24,7 @@ export async function fetchSamples(): Promise<SampleReceipt[]> {
 
 export async function processSampleOCR(
   sampleFilename: string,
-  modelName: string = 'gemini-3.5-flash-lite',
+  modelName: string = 'gemini-3.8-flash',
   skipTranscription: boolean = false
 ): Promise<PipelineResult> {
   const res = await fetch(`${API_BASE}/ocr/process-sample`, {
@@ -38,15 +38,23 @@ export async function processSampleOCR(
   });
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(errorData.detail || 'OCR processing failed');
+    let errorDetail = '';
+    try {
+      const errorData = await res.json();
+      errorDetail = typeof errorData.detail === 'object'
+        ? errorData.detail.message || JSON.stringify(errorData.detail)
+        : errorData.detail || '';
+    } catch {
+      errorDetail = await res.text().catch(() => '');
+    }
+    throw new Error(errorDetail || `OCR failed: ${res.status} ${res.statusText}`);
   }
   return res.json();
 }
 
 export async function processUploadOCR(
   file: File,
-  modelName: string = 'gemini-3.5-flash-lite',
+  modelName: string = 'gemini-3.8-flash',
   skipTranscription: boolean = false,
   bookNumber?: string
 ): Promise<PipelineResult> {
@@ -64,19 +72,24 @@ export async function processUploadOCR(
   });
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-    // 409 = duplicate image — surface a clear, actionable message
-    if (res.status === 409) {
-      const d = errorData.detail || errorData;
-      const msg = typeof d === 'string'
-        ? d
-        : d.message || `Receipt #${d.receipt_no} was already uploaded (Status: ${d.status}).`;
-      throw new Error(`DUPLICATE: ${msg}`);
+    let errorDetail = '';
+    try {
+      const errorData = await res.json();
+      if (res.status === 409) {
+        const d = errorData.detail || errorData;
+        const msg = typeof d === 'string'
+          ? d
+          : d.message || `Receipt #${d.receipt_no} was already uploaded (Status: ${d.status}).`;
+        throw new Error(`DUPLICATE: ${msg}`);
+      }
+      errorDetail = typeof errorData.detail === 'object'
+        ? errorData.detail.message || JSON.stringify(errorData.detail)
+        : errorData.detail || '';
+    } catch (parseErr: any) {
+      if (parseErr.message && parseErr.message.startsWith('DUPLICATE:')) throw parseErr;
+      errorDetail = await res.text().catch(() => '');
     }
-    const msg = typeof errorData.detail === 'object'
-      ? errorData.detail.message || JSON.stringify(errorData.detail)
-      : errorData.detail || 'Uploaded OCR processing failed';
-    throw new Error(msg);
+    throw new Error(errorDetail || `OCR request failed with HTTP ${res.status}: ${res.statusText || 'Server Error'}`);
   }
   return res.json();
 }
