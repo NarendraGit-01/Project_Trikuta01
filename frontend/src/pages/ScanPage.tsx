@@ -435,9 +435,9 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                 disabled={isProcessing || isBatchProcessing}
                 className="bg-white border border-amber-300 rounded px-2 py-0.5 text-gray-800 font-medium focus:outline-none"
               >
-                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Fast & Accurate)</option>
-                <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Fallback)</option>
-                <option value="gemini-2.5-flash">gemini-2.5-flash (Standard)</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Accurate)</option>
+                <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (Ultra Fast)</option>
+                <option value="gemini-2.0-flash">gemini-2.0-flash (Standard)</option>
               </select>
             </div>
           </div>

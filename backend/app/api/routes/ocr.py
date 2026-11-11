@@ -216,9 +216,16 @@ async def process_uploaded_receipt(
     # Compute SHA-256 hash for duplicate detection
     img_hash = hashlib.sha256(contents).hexdigest()
     # Check if an identical image already exists
-    db = SessionLocal()
-    existing = db.query(Receipt).filter(Receipt.image_hash == img_hash).first()
-    db.close()
+    existing = None
+    try:
+        db = SessionLocal()
+        try:
+            existing = db.query(Receipt).filter(Receipt.image_hash == img_hash).first()
+        finally:
+            db.close()
+    except Exception as db_err:
+        print(f"Warning: Duplicate check DB query skipped due to error: {db_err}")
+
     if existing:
         raise HTTPException(
             status_code=409,

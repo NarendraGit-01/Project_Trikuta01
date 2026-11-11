@@ -13,7 +13,7 @@ import { getReceipt } from './services/api';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('scan');
-  const [activeModel, setActiveModel] = useState<string>('gemini-3.5-flash-lite');
+  const [activeModel, setActiveModel] = useState<string>('gemini-2.5-flash');
 
   // OCR Review State
   const [activeReceiptId, setActiveReceiptId] = useState<number | null>(null);

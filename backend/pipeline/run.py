@@ -49,8 +49,16 @@ def get_gemini_client(model_name: Optional[str] = None):
     # Sync to os.environ so all sub-libraries and google-genai find it
     os.environ["GOOGLE_API_KEY"] = api_key
 
-    # Try model name or default to configured primary model
-    chosen_model = model_name or settings.GEMINI_PRIMARY_MODEL or "gemini-3.5-flash-lite"
+    # Map any legacy or UI aliases to valid Google Gemini model identifiers
+    MODEL_ALIASES = {
+        "gemini-3.5-flash-lite": "gemini-2.5-flash",
+        "gemini-3.5-flash": "gemini-2.5-flash",
+        "gemini-3.1-flash-lite": "gemini-2.5-flash-lite",
+        "gemini-flash": "gemini-2.5-flash",
+        "gemini-flash-lite": "gemini-2.5-flash-lite",
+    }
+    raw_model = model_name or settings.GEMINI_PRIMARY_MODEL or "gemini-2.5-flash"
+    chosen_model = MODEL_ALIASES.get(raw_model, raw_model)
     return ChatGoogleGenerativeAI(model=chosen_model, max_retries=3, api_key=api_key)
 
 
