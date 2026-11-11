@@ -24,8 +24,8 @@ export async function fetchSamples(): Promise<SampleReceipt[]> {
 
 export async function processSampleOCR(
   sampleFilename: string,
-  modelName: string = 'gemini-3.8-flash',
-  skipTranscription: boolean = false
+  modelName: string = 'gemini-3.5-flash-lite',
+  skipTranscription: boolean = true
 ): Promise<PipelineResult> {
   const res = await fetch(`${API_BASE}/ocr/process-sample`, {
     method: 'POST',
@@ -54,7 +54,7 @@ export async function processSampleOCR(
 
 export async function processUploadOCR(
   file: File,
-  modelName: string = 'gemini-3.8-flash',
+  modelName: string = 'gemini-3.5-flash-lite',
   skipTranscription: boolean = true,
   bookNumber?: string
 ): Promise<PipelineResult> {

@@ -49,22 +49,22 @@ def get_gemini_client(model_name: Optional[str] = None):
     # Sync to os.environ so all sub-libraries and google-genai find it
     os.environ["GOOGLE_API_KEY"] = api_key
 
-    # Map any legacy or UI aliases to valid Google Gemini model identifiers
+    # Map any legacy or UI aliases to working Google Gemini model identifiers
     MODEL_ALIASES = {
-        "gemini-3.8-flash": "gemini-3.8-flash",
-        "gemini-3.8-flash-lite": "gemini-3.8-flash-lite",
-        "gemini-3.5-flash-lite": "gemini-3.8-flash",
-        "gemini-3.5-flash": "gemini-3.8-flash",
-        "gemini-3.1-flash-lite": "gemini-3.8-flash-lite",
-        "gemini-2.5-flash": "gemini-3.8-flash",
-        "gemini-2.5-flash-lite": "gemini-3.8-flash-lite",
-        "gemini-2.0-flash": "gemini-3.8-flash",
-        "gemini-flash": "gemini-3.8-flash",
-        "gemini-flash-lite": "gemini-3.8-flash-lite",
+        "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-3.5-flash": "gemini-3.5-flash",
+        "gemini-3.8-flash": "gemini-3.5-flash-lite",
+        "gemini-3.8-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-2.5-flash": "gemini-3.5-flash-lite",
+        "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+        "gemini-2.0-flash": "gemini-3.5-flash-lite",
+        "gemini-flash": "gemini-3.5-flash-lite",
+        "gemini-flash-lite": "gemini-3.5-flash-lite",
     }
-    raw_model = model_name or settings.GEMINI_PRIMARY_MODEL or "gemini-3.8-flash"
-    chosen_model = MODEL_ALIASES.get(raw_model, "gemini-3.8-flash")
-    return ChatGoogleGenerativeAI(model=chosen_model, max_retries=1, request_timeout=30.0, api_key=api_key)
+    raw_model = model_name or settings.GEMINI_PRIMARY_MODEL or "gemini-3.5-flash-lite"
+    chosen_model = MODEL_ALIASES.get(raw_model, "gemini-3.5-flash-lite")
+    return ChatGoogleGenerativeAI(model=chosen_model, max_retries=1, request_timeout=60.0, api_key=api_key)
 
 
 def process_receipt(
@@ -181,10 +181,12 @@ def process_receipt(
     ]))
     cands = resolver.get_candidates(all_g_readings, top_k=30)
     best_cand_score = cands[0][1] if cands else 0.0
+    raw_reading = all_g_readings[0] if all_g_readings else (r2.gothram_as_written or "")
 
     if cands and best_cand_score >= 80.0:
         top_name = cands[0][0]
         g_pick = GothramPick(
+            as_written=raw_reading,
             final=top_name,
             matched_in_list=True,
             list_match=top_name,
@@ -194,6 +196,7 @@ def process_receipt(
     elif cands and best_cand_score >= 60.0:
         top_name = cands[0][0]
         g_pick = GothramPick(
+            as_written=raw_reading,
             final=top_name,
             matched_in_list=True,
             list_match=top_name,
@@ -201,8 +204,8 @@ def process_receipt(
             reason=f"Candidate match: {top_name} ({best_cand_score:.0f}%)"
         )
     else:
-        raw_reading = all_g_readings[0] if all_g_readings else (r2.gothram_as_written or "")
         g_pick = GothramPick(
+            as_written=raw_reading,
             final=raw_reading,
             matched_in_list=False,
             list_match=None,

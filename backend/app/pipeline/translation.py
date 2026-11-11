@@ -1,7 +1,11 @@
 import logging
 from typing import Optional
 
-from langdetect import detect, LangDetectException
+try:
+    from langdetect import detect, LangDetectException
+    HAS_LANGDETECT = True
+except Exception:
+    HAS_LANGDETECT = False
 
 from backend.app.core.config import settings
 from backend.pipeline.run import get_gemini_client
@@ -10,17 +14,26 @@ from backend.pipeline.schemas import PipelineResult, Person
 logger = logging.getLogger(__name__)
 
 def _detect_language(text: str) -> Optional[str]:
-    """Return a two‑letter language code ('en' or 'te') if detectable.
-    Falls back to None on failure or if language is not clearly one of the two.
+    """Return a two-letter language code ('en' or 'te') if detectable.
+    Uses pure Unicode block detection for speed & zero-dependency reliability.
     """
-    try:
-        lang = detect(text)
-        if lang.startswith('en'):
-            return 'en'
-        if lang.startswith('te'):
-            return 'te'
-    except LangDetectException:
-        pass
+    if not text or not isinstance(text, str):
+        return None
+    # Check for Telugu Unicode block (\u0C00 - \u0C7F)
+    if any("\u0C00" <= ch <= "\u0C7F" for ch in text):
+        return "te"
+    # Otherwise check for English Latin letters
+    if any(ch.isalpha() and ord(ch) < 128 for ch in text):
+        return "en"
+    if HAS_LANGDETECT:
+        try:
+            lang = detect(text)
+            if lang.startswith("en"):
+                return "en"
+            if lang.startswith("te"):
+                return "te"
+        except Exception:
+            pass
     return None
 
 def _translate_with_gemini(text: str, target_lang: str) -> str:

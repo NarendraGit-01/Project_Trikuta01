@@ -1,14 +1,36 @@
+import os
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 from backend.app.core.config import settings
 
 db_url = settings.DATABASE_URL
 # Supabase / cloud providers output postgres:// or postgresql://
-# Explicitly use psycopg2 dialect for psycopg2-binary
 if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
-elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+try:
+    import psycopg2
+    has_psycopg2 = True
+except ImportError:
+    has_psycopg2 = False
+
+try:
+    import psycopg
+    has_psycopg = True
+except ImportError:
+    has_psycopg = False
+
+if db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
+    if has_psycopg2:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    elif has_psycopg:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+# Graceful fallback to SQLite for local development when C database drivers are not installed locally
+if (db_url.startswith("postgresql://") or db_url.startswith("postgresql+")) and not has_psycopg2 and not has_psycopg:
+    if not os.getenv("VERCEL"):
+        print("Notice: PostgreSQL driver not installed locally. Using SQLite for local testing.")
+        db_url = "sqlite:///./temple_receipts.db"
 
 engine_kwargs = {"echo": False}
 
