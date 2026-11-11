@@ -9,7 +9,7 @@ import { DispatchPage } from './pages/DispatchPage';
 import { GothramMasterPage } from './pages/GothramMasterPage';
 import { PipelineResult } from './types';
 import { getReceipt } from './services/api';
-import { updateStoredReceipt } from './services/receiptStore';
+import { deleteStoredReceipt } from './services/receiptStore';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('scan');
@@ -42,15 +42,16 @@ export const App: React.FC = () => {
   const handleSavedReceipt = async (receiptId: number) => {
     if (activeStoredReceiptId) {
       try {
-        await updateStoredReceipt(activeStoredReceiptId, {
-          reviewed: true,
-          savedReceiptId: receiptId,
-        });
+        await deleteStoredReceipt(activeStoredReceiptId);
       } catch (e) {
-        console.warn('Could not update stored receipt status:', e);
+        console.warn('Could not remove processed receipt from local queue:', e);
       }
+      setActiveStoredReceiptId(undefined);
     }
-    setSuccessBanner(`Receipt #${receiptId} has been successfully recorded in the database.`);
+    setActiveOCRResult(null);
+    setActiveImageUrl(null);
+    setActiveReceiptId(null);
+    setSuccessBanner(`Receipt #${receiptId} has been successfully recorded and removed from the scan queue.`);
     setTimeout(() => setSuccessBanner(null), 6000);
     setCurrentTab('receipts');
   };

@@ -88,10 +88,18 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const loadStoredQueue = async () => {
     setIsLoadingStore(true);
     try {
-      const items = await getAllStoredReceipts();
-      setReceipts(items);
-      if (items.length > 0 && !selectedId) {
-        setSelectedId(items[0].id);
+      const allItems = await getAllStoredReceipts();
+      // Remove already-processed/saved items from the active scan queue
+      const alreadyProcessedIds = allItems
+        .filter((r) => r.reviewed || r.savedReceiptId !== undefined)
+        .map((r) => r.id);
+      if (alreadyProcessedIds.length > 0) {
+        await deleteStoredReceipts(alreadyProcessedIds).catch(() => {});
+      }
+      const activeItems = allItems.filter((r) => !r.reviewed && r.savedReceiptId === undefined);
+      setReceipts(activeItems);
+      if (activeItems.length > 0 && !selectedId) {
+        setSelectedId(activeItems[0].id);
       }
     } catch (err: any) {
       console.error('Error loading stored receipts from IndexedDB:', err);
@@ -116,9 +124,10 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     return Array.from(set).sort();
   }, [receipts]);
 
-  // Filtered queue
+  // Filtered queue (never show receipts already saved/finalized)
   const filteredReceipts = useMemo(() => {
     return receipts.filter((r) => {
+      if (r.reviewed || r.savedReceiptId !== undefined) return false;
       if (selectedBookFilter !== 'ALL') {
         if ((r.bookNumber || '').trim() !== selectedBookFilter) return false;
       }
