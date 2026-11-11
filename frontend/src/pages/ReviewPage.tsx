@@ -597,7 +597,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   const humanChecks = Array.isArray(result.needs_human_check) ? result.needs_human_check : [];
 
   return (
-    <div className="max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* ── Top Bar ─────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-200 mb-6">
         <div className="flex items-center space-x-3">
@@ -667,8 +667,8 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
 
       {/* ── Split-Screen Workspace ──────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left: Wide Aspect-Ratio Image Viewer */}
-        <div className="lg:col-span-6 xl:col-span-6 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sticky top-20">
+        {/* Left: Wide Aspect-Ratio Image Viewer (~20% wider: 7/12 cols) */}
+        <div className="lg:col-span-7 xl:col-span-7 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sticky top-20">
           <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100">
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-700">
@@ -718,7 +718,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onDoubleClick={handleDoubleClick}
-            className={`relative h-[310px] sm:h-[340px] md:h-[370px] bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center p-2 border border-gray-300 select-none ${
+            className={`relative h-[360px] sm:h-[400px] md:h-[440px] bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center p-1 border border-gray-300 select-none ${
               isPanning ? 'cursor-grabbing' : 'cursor-grab'
             }`}
             title="Scroll mouse wheel inside to zoom • Click & drag to pan • Double-click to toggle 2x zoom"
@@ -753,8 +753,8 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           </div>
         </div>
 
-        {/* Right: Form */}
-        <div className="lg:col-span-6 xl:col-span-6 space-y-6">
+        {/* Right: Form (5/12 cols) */}
+        <div className="lg:col-span-5 xl:col-span-5 space-y-6">
           {/* Card 1: Receipt Header */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-2">

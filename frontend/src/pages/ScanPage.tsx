@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { processUploadOCR, autoCropImage } from '../services/api';
 import { PipelineResult } from '../types';
+import { ManualCropper } from '../components/ManualCropper';
 import {
   StoredReceiptItem,
   getAllStoredReceipts,
@@ -75,6 +76,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     total: 0,
   });
   const [isCropping, setIsCropping] = useState<boolean>(false);
+  const [isManualCropMode, setIsManualCropMode] = useState<boolean>(false);
   const [skipTranscription, setSkipTranscription] = useState<boolean>(true);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
@@ -111,6 +113,10 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   useEffect(() => {
     loadStoredQueue();
   }, []);
+
+  useEffect(() => {
+    setIsManualCropMode(false);
+  }, [selectedId]);
 
   /* ── 2. DERIVED ACTIVE RECEIPT & FILTERED LIST ───────────── */
   // Available distinct book numbers
@@ -329,7 +335,78 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     }
   };
 
-  /* ── 6. AUTO-CROP ACTIVE RECEIPT ────────────────────────── */
+  /* ── 6. CROP ACTIVE RECEIPT (MANUAL & AUTO) ─────────────── */
+  const saveCroppedBlobForSelected = async (croppedBlob: Blob) => {
+    if (!selectedReceipt) return;
+    const origBlob = selectedReceipt.originalBlob || selectedReceipt.blob;
+    const newPreviewUrl = URL.createObjectURL(croppedBlob);
+
+    setReceipts((prev) =>
+      prev.map((r) =>
+        r.id === selectedReceipt.id
+          ? {
+              ...r,
+              blob: croppedBlob,
+              originalBlob: origBlob,
+              fileSize: croppedBlob.size,
+              previewUrl: newPreviewUrl,
+              rotation: 0,
+              status: 'PENDING',
+              result: undefined,
+              error: undefined,
+            }
+          : r
+      )
+    );
+    await updateStoredReceipt(selectedReceipt.id, {
+      blob: croppedBlob,
+      originalBlob: origBlob,
+      fileSize: croppedBlob.size,
+      rotation: 0,
+      status: 'PENDING',
+      result: undefined,
+      error: undefined,
+    });
+  };
+
+  const handleApplyManualCrop = async (croppedBlob: Blob) => {
+    setIsManualCropMode(false);
+    await saveCroppedBlobForSelected(croppedBlob);
+  };
+
+  const handleResetToOriginal = async () => {
+    if (!selectedReceipt?.originalBlob) return;
+    const orig = selectedReceipt.originalBlob;
+    const origUrl = URL.createObjectURL(orig);
+    setIsManualCropMode(false);
+    setReceipts((prev) =>
+      prev.map((r) =>
+        r.id === selectedReceipt.id
+          ? {
+              ...r,
+              blob: orig,
+              originalBlob: undefined,
+              fileSize: orig.size,
+              previewUrl: origUrl,
+              rotation: 0,
+              status: 'PENDING',
+              result: undefined,
+              error: undefined,
+            }
+          : r
+      )
+    );
+    await updateStoredReceipt(selectedReceipt.id, {
+      blob: orig,
+      originalBlob: undefined,
+      fileSize: orig.size,
+      rotation: 0,
+      status: 'PENDING',
+      result: undefined,
+      error: undefined,
+    });
+  };
+
   const handleAutoCropSelected = async () => {
     if (!selectedReceipt) return;
     setIsCropping(true);
@@ -342,19 +419,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         // Fetch cropped blob to store persistently
         const res = await fetch(cropRes.url);
         const croppedBlob = await res.blob();
-        const newPreviewUrl = URL.createObjectURL(croppedBlob);
-
-        setReceipts((prev) =>
-          prev.map((r) =>
-            r.id === selectedReceipt.id
-              ? { ...r, blob: croppedBlob, previewUrl: newPreviewUrl, rotation: 0 }
-              : r
-          )
-        );
-        await updateStoredReceipt(selectedReceipt.id, {
-          blob: croppedBlob,
-          rotation: 0,
-        });
+        await saveCroppedBlobForSelected(croppedBlob);
       }
     } catch (err) {
       console.warn('Auto-crop notice:', err);
@@ -391,8 +456,47 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     await updateStoredReceipt(item.id, { status: 'PROCESSING', error: undefined });
 
     try {
-      const file = new File([item.blob], item.filename, {
-        type: item.blob.type || 'image/jpeg',
+      let uploadBlob = item.blob;
+      const normRot = ((item.rotation % 360) + 360) % 360;
+      if (normRot !== 0) {
+        uploadBlob = await new Promise<Blob>((resolve) => {
+          const imgUrl = URL.createObjectURL(item.blob);
+          const img = new Image();
+          img.onload = () => {
+            const swap = normRot === 90 || normRot === 270;
+            const cw = swap ? img.naturalHeight : img.naturalWidth;
+            const ch = swap ? img.naturalWidth : img.naturalHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = cw;
+            canvas.height = ch;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.translate(cw / 2, ch / 2);
+              ctx.rotate((normRot * Math.PI) / 180);
+              ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+              canvas.toBlob(
+                (b) => {
+                  URL.revokeObjectURL(imgUrl);
+                  resolve(b || item.blob);
+                },
+                'image/jpeg',
+                0.95
+              );
+            } else {
+              URL.revokeObjectURL(imgUrl);
+              resolve(item.blob);
+            }
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(imgUrl);
+            resolve(item.blob);
+          };
+          img.src = imgUrl;
+        });
+      }
+
+      const file = new File([uploadBlob], item.filename, {
+        type: uploadBlob.type || 'image/jpeg',
       });
 
       const result: PipelineResult = await processUploadOCR(
@@ -772,17 +876,47 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       </button>
                     </div>
 
+                    {/* Manual Interactive Crop Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setIsManualCropMode((v) => !v)}
+                      disabled={isCropping || isProcessingSingle}
+                      title="Manually draw & adjust crop box around the receipt slip"
+                      className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center space-x-1 border transition-colors ${
+                        isManualCropMode
+                          ? 'bg-amber-700 text-white border-amber-700'
+                          : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                      }`}
+                    >
+                      <Crop className="w-3.5 h-3.5" />
+                      <span className="text-[10px]">Manual Crop</span>
+                    </button>
+
                     {/* Auto-Crop Button */}
                     <button
                       type="button"
                       onClick={handleAutoCropSelected}
-                      disabled={isCropping}
+                      disabled={isCropping || isManualCropMode || isProcessingSingle}
                       title="Auto-detect slip edges & crop background"
-                      className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
+                      className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 disabled:opacity-40 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
                     >
-                      <Crop className="w-3.5 h-3.5" />
-                      <span className="text-[10px]">Crop</span>
+                      <Sparkles className="w-3 h-3" />
+                      <span className="text-[10px]">Auto-Crop</span>
                     </button>
+
+                    {/* Restore Original Photo (shown after cropping) */}
+                    {selectedReceipt.originalBlob && (
+                      <button
+                        type="button"
+                        onClick={handleResetToOriginal}
+                        disabled={isCropping || isProcessingSingle}
+                        title="Restore original uncropped photo"
+                        className="px-2 py-1 rounded bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-700 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span className="text-[10px]">Reset</span>
+                      </button>
+                    )}
 
                     {/* Rotation Controls */}
                     <button
@@ -827,12 +961,21 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                 )}
 
                 {selectedReceipt ? (
-                  <img
-                    src={selectedReceipt.previewUrl}
-                    alt={selectedReceipt.filename}
-                    style={{ transform: `rotate(${selectedReceipt.rotation}deg)` }}
-                    className="max-h-[580px] max-w-full w-auto object-contain rounded-lg shadow-2xl transition-transform duration-200"
-                  />
+                  isManualCropMode && selectedReceipt.previewUrl ? (
+                    <ManualCropper
+                      imageUrl={selectedReceipt.previewUrl}
+                      rotation={selectedReceipt.rotation}
+                      onApplyCrop={handleApplyManualCrop}
+                      onCancel={() => setIsManualCropMode(false)}
+                    />
+                  ) : (
+                    <img
+                      src={selectedReceipt.previewUrl}
+                      alt={selectedReceipt.filename}
+                      style={{ transform: `rotate(${selectedReceipt.rotation}deg)` }}
+                      className="max-h-[580px] max-w-full w-auto object-contain rounded-lg shadow-2xl transition-transform duration-200"
+                    />
+                  )
                 ) : (
                   /* Empty Queue Dropzone */
                   <label

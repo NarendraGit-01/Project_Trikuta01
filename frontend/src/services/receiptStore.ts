@@ -5,6 +5,7 @@ export interface StoredReceiptItem {
   filename: string;
   fileSize: number;
   blob: Blob;
+  originalBlob?: Blob;
   previewUrl?: string;
   bookNumber?: string;
   uploadedAt: number;
