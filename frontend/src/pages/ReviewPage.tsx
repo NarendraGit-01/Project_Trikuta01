@@ -910,18 +910,6 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-medium text-gray-600 mb-0.5">
-                    Surname (English) — Auto-filled / Editable
-                  </label>
-                  <input
-                    type="text"
-                    value={surnameEn}
-                    onChange={(e) => handleSurnameEnChange(e.target.value)}
-                    placeholder="e.g. YADLA"
-                    className="w-full text-sm font-bold border-2 border-amber-300 rounded-lg px-2.5 py-1.5 text-gray-900 bg-white focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
                   <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-telugu">
                     ఇంటిపేరు (తెలుగు) — Auto-filled / Editable
                   </label>
@@ -931,6 +919,18 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                     onChange={(e) => handleSurnameTeChange(e.target.value)}
                     placeholder="ఉదా. యడ్ల"
                     className="w-full text-sm font-telugu font-semibold border-2 border-amber-300 rounded-lg px-2.5 py-1.5 text-gray-900 bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-medium text-gray-600 mb-0.5">
+                    Surname (English) — Auto-filled / Editable
+                  </label>
+                  <input
+                    type="text"
+                    value={surnameEn}
+                    onChange={(e) => handleSurnameEnChange(e.target.value)}
+                    placeholder="e.g. YADLA"
+                    className="w-full text-sm font-bold border-2 border-amber-300 rounded-lg px-2.5 py-1.5 text-gray-900 bg-white focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
               </div>
@@ -943,9 +943,9 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold text-gray-700">
                       Member #{idx + 1}:{' '}
-                      {surnameEn ? `${surnameEn} ` : ''}
+                      {surnameTe ? `${surnameTe} ` : surnameEn ? `${surnameEn} ` : ''}
                       <span className="text-amber-800">
-                        {person.given_name_en || person.given_name_te || '(Given Name)'}
+                        {person.given_name_te || person.given_name_en || '(పేరు / Name)'}
                       </span>
                     </span>
                     {persons.length > 1 && (
@@ -960,18 +960,6 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
-                        Given Name (English) — Auto-filled / Editable
-                      </label>
-                      <input
-                        type="text"
-                        value={person.given_name_en}
-                        onChange={(e) => handleGivenNameEn(idx, e.target.value)}
-                        placeholder="e.g. PATTABHI RAMAYYA"
-                        className="w-full text-xs font-semibold border border-gray-300 rounded-md px-2 py-1.5 text-gray-800 focus:ring-2 focus:ring-amber-400"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-[10px] font-medium text-gray-500 mb-0.5 font-telugu">
                         పేరు (తెలుగు) — Auto-filled / Editable
                       </label>
@@ -981,6 +969,18 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                         onChange={(e) => handleGivenNameTe(idx, e.target.value)}
                         placeholder="ఉదా. పట్టాభి రామయ్య"
                         className="w-full text-xs font-telugu font-semibold border border-gray-300 rounded-md px-2 py-1.5 text-gray-800 focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
+                        Given Name (English) — Auto-filled / Editable
+                      </label>
+                      <input
+                        type="text"
+                        value={person.given_name_en}
+                        onChange={(e) => handleGivenNameEn(idx, e.target.value)}
+                        placeholder="e.g. PATTABHI RAMAYYA"
+                        className="w-full text-xs font-semibold border border-gray-300 rounded-md px-2 py-1.5 text-gray-800 focus:ring-2 focus:ring-amber-400"
                       />
                     </div>
                   </div>
