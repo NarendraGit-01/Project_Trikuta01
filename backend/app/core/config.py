@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
     # Database
-    DATABASE_URL: str = "sqlite:///./temple_receipts.db"
+    DATABASE_URL: str = "sqlite:////tmp/temple_receipts.db" if os.getenv("VERCEL") and not os.getenv("DATABASE_URL") else "sqlite:///./temple_receipts.db"
 
     # Storage
-    STORAGE_DIR: str = "./data/storage"
+    STORAGE_DIR: str = "/tmp/storage" if os.getenv("VERCEL") else "./data/storage"
 
     # Supabase (Storage & Postgres)
     SUPABASE_URL: str = ""

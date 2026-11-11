@@ -14,40 +14,49 @@ from backend.app.models.user import User
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.APP_ENV != "testing":
-        # Startup: ensure all tables are created
-        Base.metadata.create_all(bind=engine)
+        # Startup: ensure all tables are created safely
+        try:
+            Base.metadata.create_all(bind=engine)
+        except Exception as e:
+            print(f"Warning: Could not auto-create database tables: {e}")
 
         # Ensure storage directory exists
-        Path(settings.STORAGE_DIR).mkdir(parents=True, exist_ok=True)
+        try:
+            Path(settings.STORAGE_DIR).mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
 
         # Seed default Admin and Staff users if missing
-        db = SessionLocal()
         try:
-            admin = db.query(User).filter(User.username == "admin").first()
-            if not admin:
-                admin_user = User(
-                    username="admin",
-                    password_hash=get_password_hash("admin123"),
-                    full_name="Temple Administrator",
-                    role="ADMIN",
-                    active=True,
-                )
-                db.add(admin_user)
+            db = SessionLocal()
+            try:
+                admin = db.query(User).filter(User.username == "admin").first()
+                if not admin:
+                    admin_user = User(
+                        username="admin",
+                        password_hash=get_password_hash("admin123"),
+                        full_name="Temple Administrator",
+                        role="ADMIN",
+                        active=True,
+                    )
+                    db.add(admin_user)
 
-            staff = db.query(User).filter(User.username == "staff").first()
-            if not staff:
-                staff_user = User(
-                    username="staff",
-                    password_hash=get_password_hash("staff123"),
-                    full_name="Temple Office Staff",
-                    role="STAFF",
-                    active=True,
-                )
-                db.add(staff_user)
+                staff = db.query(User).filter(User.username == "staff").first()
+                if not staff:
+                    staff_user = User(
+                        username="staff",
+                        password_hash=get_password_hash("staff123"),
+                        full_name="Temple Office Staff",
+                        role="STAFF",
+                        active=True,
+                    )
+                    db.add(staff_user)
 
-            db.commit()
-        finally:
-            db.close()
+                db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"Warning: Could not seed default users: {e}")
 
     yield
 
@@ -75,8 +84,11 @@ if samples_dir.exists():
 
 # Mount Storage directory for receipt images
 storage_dir = Path(settings.STORAGE_DIR)
-storage_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static/storage", StaticFiles(directory=str(storage_dir)), name="storage")
+try:
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/static/storage", StaticFiles(directory=str(storage_dir)), name="storage")
+except Exception:
+    pass
 
 # Mount all API v1 routes
 app.include_router(api_router)

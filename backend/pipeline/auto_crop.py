@@ -1,4 +1,10 @@
-import cv2
+try:
+    import cv2
+    HAS_CV2 = True
+except Exception:
+    cv2 = None
+    HAS_CV2 = False
+
 import numpy as np
 from PIL import Image
 from typing import List, Tuple, Union
@@ -14,6 +20,22 @@ def auto_orient_and_crop(
     Returns:
         (cropped_pil_image, rotation_applied_degrees, bounding_box [x1, y1, x2, y2])
     """
+    if not HAS_CV2:
+        # Graceful fallback using pure PIL
+        if isinstance(img_input, str):
+            pil_img = Image.open(img_input).convert("RGB")
+        elif isinstance(img_input, np.ndarray):
+            pil_img = Image.fromarray(img_input)
+        else:
+            pil_img = img_input.convert("RGB")
+        w, h = pil_img.size
+        rot = 0
+        if h > w:
+            pil_img = pil_img.rotate(90, expand=True)
+            rot = 270
+            w, h = pil_img.size
+        return pil_img, rot, [0, 0, w, h]
+
     # 1. Convert to OpenCV BGR numpy array
     if isinstance(img_input, str):
         img_bgr = cv2.imread(img_input)
