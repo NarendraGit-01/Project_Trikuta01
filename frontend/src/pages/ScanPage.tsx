@@ -61,6 +61,11 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const [selectedBookFilter, setSelectedBookFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'SUCCESS' | 'ERROR'>('ALL');
 
+  // Book Number Confirmation Modal on Upload
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [showBookModal, setShowBookModal] = useState<boolean>(false);
+  const [modalBookNumber, setModalBookNumber] = useState<string>('');
+
   // OCR Execution States
   const [isProcessingSingle, setIsProcessingSingle] = useState<boolean>(false);
   const [singleStage, setSingleStage] = useState<string>('');
@@ -136,13 +141,46 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     return filteredReceipts.findIndex((r) => r.id === selectedReceipt.id);
   }, [filteredReceipts, selectedReceipt]);
 
-  /* ── 3. FILE INGESTION (MULTI-SELECT SUPPORT) ────────────── */
-  const ingestFiles = async (files: File[]) => {
+  /* ── 3. FILE INGESTION (WITH POPUP FOR BOOK NUMBER) ──────── */
+  const promptBookNumberAndIngest = (files: File[]) => {
+    setPendingFiles(files);
+    setModalBookNumber(activeBookNumber || '');
+    setShowBookModal(true);
+  };
+
+  const handleConfirmBookNumber = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!pendingFiles || pendingFiles.length === 0) return;
+    const bookNo = modalBookNumber.trim();
+    if (bookNo) {
+      setActiveBookNumber(bookNo);
+    }
+    const filesToUpload = pendingFiles;
+    setShowBookModal(false);
+    setPendingFiles(null);
+    await ingestFiles(filesToUpload, bookNo);
+  };
+
+  const handleSkipBookNumber = async () => {
+    if (!pendingFiles || pendingFiles.length === 0) return;
+    const filesToUpload = pendingFiles;
+    setShowBookModal(false);
+    setPendingFiles(null);
+    await ingestFiles(filesToUpload, '');
+  };
+
+  const handleCancelBookModal = () => {
+    setShowBookModal(false);
+    setPendingFiles(null);
+  };
+
+  const ingestFiles = async (files: File[], bookNumberToAssign?: string) => {
     if (files.length === 0) return;
     setErrorNotice(null);
 
     const now = Date.now();
     const newItems: StoredReceiptItem[] = [];
+    const bookNo = (bookNumberToAssign !== undefined ? bookNumberToAssign : activeBookNumber).trim();
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -153,7 +191,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         fileSize: f.size,
         blob: f,
         previewUrl: URL.createObjectURL(f),
-        bookNumber: activeBookNumber.trim() || undefined,
+        bookNumber: bookNo || undefined,
         uploadedAt: now + i,
         rotation: 0,
         status: 'PENDING',
@@ -206,14 +244,14 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 
     const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
     if (files.length === 0) return;
-    await ingestFiles(files);
+    promptBookNumberAndIngest(files);
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files);
-    await ingestFiles(files);
     e.target.value = '';
+    promptBookNumberAndIngest(files);
   };
 
   /* ── 5. ITEM CONTROLS (ROTATE, DELETE, SELECT) ───────────── */
@@ -440,6 +478,102 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       onDrop={handleDrop}
       className="min-h-[calc(100vh-5rem)] relative"
     >
+      {/* ── BOOK NUMBER CONFIRMATION MODAL ── */}
+      {showBookModal && pendingFiles && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 font-serif">
+                    Assign Book Number
+                  </h3>
+                  <p className="text-xs text-gray-500 font-telugu">పుస్తకం సంఖ్య నమోదు చేయండి</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCancelBookModal}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs text-amber-900">
+              <span className="font-bold">{pendingFiles.length} receipt{pendingFiles.length !== 1 ? 's' : ''} selected. </span>
+              All these receipts will be grouped under this book folder for easy tracking.
+            </div>
+
+            <form onSubmit={handleConfirmBookNumber} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Book Number (పుస్తకం నెంబరు)
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={modalBookNumber}
+                  onChange={(e) => setModalBookNumber(e.target.value)}
+                  placeholder="e.g. 01, 02, or BOOK-12"
+                  className="w-full text-sm font-mono font-bold border-2 border-amber-400 rounded-xl px-3.5 py-2.5 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Quick suggestions if other books exist */}
+              {distinctBooks.length > 0 && (
+                <div>
+                  <span className="text-[11px] font-semibold text-gray-500 block mb-1">
+                    Or select an existing book:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {distinctBooks.map((b) => (
+                      <button
+                        key={b}
+                        type="button"
+                        onClick={() => setModalBookNumber(b)}
+                        className={`text-xs px-2.5 py-1 rounded-lg font-mono font-bold border transition-colors ${
+                          modalBookNumber === b
+                            ? 'bg-amber-700 text-white border-amber-700'
+                            : 'bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200'
+                        }`}
+                      >
+                        Book {b}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end space-x-2.5 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleCancelBookModal}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSkipBookNumber}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors"
+                >
+                  Skip Book #
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs font-bold rounded-xl shadow transition-all"
+                >
+                  Continue & Add ({pendingFiles.length})
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Drag & Drop Fullscreen Overlay */}
       {isDragging && (
         <div className="fixed inset-0 z-50 bg-amber-900/80 backdrop-blur-sm flex flex-col items-center justify-center text-white border-4 border-dashed border-amber-300 pointer-events-none animate-fade-in">
@@ -744,10 +878,17 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       </span>
                     )}
                     {selectedReceipt.status === 'ERROR' && (
-                      <span className="bg-red-100 text-red-800 px-2.5 py-1 rounded-full font-bold flex items-center space-x-1 border border-red-300">
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                        <span>Extraction Failed</span>
-                      </span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                        <span className="bg-red-100 text-red-800 px-2.5 py-1 rounded-full font-bold flex items-center space-x-1 border border-red-300">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                          <span>Extraction Failed</span>
+                        </span>
+                        {selectedReceipt.error && (
+                          <span className="text-[11px] text-red-700 max-w-sm truncate" title={selectedReceipt.error}>
+                            ({selectedReceipt.error})
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -760,6 +901,15 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       >
                         <Eye className="w-4 h-4" />
                         <span>REVIEW & VERIFY EXTRACTION →</span>
+                      </button>
+                    ) : selectedReceipt.status === 'ERROR' ? (
+                      <button
+                        onClick={() => handleRunOCRForReceipt(selectedReceipt, true)}
+                        disabled={isProcessingSingle || isBatchProcessing}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 transition-all"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <span>RETRY OCR EXTRACTION</span>
                       </button>
                     ) : (
                       <button

@@ -31,7 +31,7 @@ def run_transcription(
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=[
             {"type": "text", "text": TRANSCRIPTION_PROMPT},
-            {"type": "image", "base64": image_b64, "mime_type": "image/jpeg"}
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
         ])
     ]
 

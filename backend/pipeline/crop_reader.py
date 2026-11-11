@@ -37,7 +37,7 @@ def run_zoom_reread(
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=[
             {"type": "text", "text": ZOOM_PROMPT},
-            {"type": "image", "base64": crop_b64, "mime_type": "image/jpeg"}
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{crop_b64}"}}
         ])
     ]
 
@@ -75,7 +75,7 @@ def run_field_gothram_crop(
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=[
             {"type": "text", "text": FIELD_GOTHRAM_PROMPT},
-            {"type": "image", "base64": b64, "mime_type": "image/jpeg"}
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
         ])
     ]
 
@@ -116,7 +116,7 @@ def run_field_phones_crop(
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=[
             {"type": "text", "text": FIELD_PHONES_PROMPT},
-            {"type": "image", "base64": b64, "mime_type": "image/jpeg"}
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
         ])
     ]
 

@@ -56,7 +56,7 @@ def detect_orientation_with_gemini(
             SystemMessage(content="You are an expert document preprocessor. Detect document orientation precisely."),
             HumanMessage(content=[
                 {"type": "text", "text": prompt},
-                {"type": "image", "base64": thumb_b64, "mime_type": "image/jpeg"}
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{thumb_b64}"}}
             ])
         ]
         result = llm_client.with_structured_output(RotationAssessment).invoke(messages)
