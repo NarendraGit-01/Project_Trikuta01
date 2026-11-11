@@ -27,9 +27,9 @@ class Settings(BaseSettings):
 
     # AI Configuration (Gemini)
     GOOGLE_API_KEY: str = ""
-    GEMINI_PRIMARY_MODEL: str = "gemini-2.5-flash"
-    GEMINI_FALLBACK_MODEL: str = "gemini-2.0-flash"
-    GEMINI_ROUTING_MODEL: str = "gemini-2.5-flash-lite"
+    GEMINI_PRIMARY_MODEL: str = "gemini-3.8-flash"
+    GEMINI_FALLBACK_MODEL: str = "gemini-3.8-flash-lite"
+    GEMINI_ROUTING_MODEL: str = "gemini-3.8-flash-lite"
 
     # Temple Config
     TEMPLE_NAME_TE: str = "శ్రీ త్రికోటేశ్వర స్వామి వారి దేవస్థానము"

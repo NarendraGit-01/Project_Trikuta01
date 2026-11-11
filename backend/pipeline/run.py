@@ -51,14 +51,19 @@ def get_gemini_client(model_name: Optional[str] = None):
 
     # Map any legacy or UI aliases to valid Google Gemini model identifiers
     MODEL_ALIASES = {
-        "gemini-3.5-flash-lite": "gemini-2.5-flash",
-        "gemini-3.5-flash": "gemini-2.5-flash",
-        "gemini-3.1-flash-lite": "gemini-2.5-flash-lite",
-        "gemini-flash": "gemini-2.5-flash",
-        "gemini-flash-lite": "gemini-2.5-flash-lite",
+        "gemini-3.8-flash": "gemini-3.8-flash",
+        "gemini-3.8-flash-lite": "gemini-3.8-flash-lite",
+        "gemini-3.5-flash-lite": "gemini-3.8-flash",
+        "gemini-3.5-flash": "gemini-3.8-flash",
+        "gemini-3.1-flash-lite": "gemini-3.8-flash-lite",
+        "gemini-2.5-flash": "gemini-3.8-flash",
+        "gemini-2.5-flash-lite": "gemini-3.8-flash-lite",
+        "gemini-2.0-flash": "gemini-3.8-flash",
+        "gemini-flash": "gemini-3.8-flash",
+        "gemini-flash-lite": "gemini-3.8-flash-lite",
     }
-    raw_model = model_name or settings.GEMINI_PRIMARY_MODEL or "gemini-2.5-flash"
-    chosen_model = MODEL_ALIASES.get(raw_model, raw_model)
+    raw_model = model_name or settings.GEMINI_PRIMARY_MODEL or "gemini-3.8-flash"
+    chosen_model = MODEL_ALIASES.get(raw_model, "gemini-3.8-flash")
     return ChatGoogleGenerativeAI(model=chosen_model, max_retries=3, api_key=api_key)
 
 
