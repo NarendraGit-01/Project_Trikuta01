@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import relationship
 from backend.app.core.database import Base
 
@@ -31,6 +31,11 @@ class Receipt(Base):
 
     book_number = Column(String(50), index=True, nullable=True)
     image_hash = Column(String(64), index=True, nullable=True)
+
+    # Archive / Soft-delete
+    is_archived = Column(Boolean, default=False, index=True, nullable=False)
+    archived_at = Column(DateTime, nullable=True)
+    archive_reason = Column(String(255), nullable=True)
 
     original_image_path = Column(String(500), nullable=False)
     corrected_image_path = Column(String(500), nullable=True)

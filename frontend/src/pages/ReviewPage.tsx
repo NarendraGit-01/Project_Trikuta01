@@ -17,7 +17,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { PipelineResult, Person, Phone } from '../types';
-import { createReceipt, searchGothrams, resolvePincode, PincodeDetails } from '../services/api';
+import { createReceipt, updateReceipt, searchGothrams, resolvePincode, PincodeDetails } from '../services/api';
 import {
   isTeluguScript,
   transliterateTeluguToEnglish,
@@ -28,6 +28,7 @@ interface ReviewPageProps {
   result: PipelineResult;
   imageUrl: string;
   sourceFilename?: string;
+  existingReceiptId?: number | null;
   onBackToScan: () => void;
   onSaved: (receiptId: number) => void;
 }
@@ -36,6 +37,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   result,
   imageUrl,
   sourceFilename,
+  existingReceiptId,
   onBackToScan,
   onSaved,
 }) => {
@@ -501,9 +503,16 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     };
 
     try {
-      const created = await createReceipt(payload);
+      let savedId: number;
+      if (existingReceiptId) {
+        const updated = await updateReceipt(existingReceiptId, payload);
+        savedId = updated.id;
+      } else {
+        const created = await createReceipt(payload);
+        savedId = created.id;
+      }
       setIsSaving(false);
-      onSaved(created.id);
+      onSaved(savedId);
     } catch (err: any) {
       setIsSaving(false);
       setSaveError(err.message || 'Failed to save receipt record to database');

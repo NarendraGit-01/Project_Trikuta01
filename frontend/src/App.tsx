@@ -15,12 +15,14 @@ export const App: React.FC = () => {
   const [activeModel, setActiveModel] = useState<string>('gemini-3.5-flash-lite');
 
   // OCR Review State
+  const [activeReceiptId, setActiveReceiptId] = useState<number | null>(null);
   const [activeOCRResult, setActiveOCRResult] = useState<PipelineResult | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeSourceFilename, setActiveSourceFilename] = useState<string | undefined>(undefined);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   const handleOCRComplete = (result: PipelineResult, imageUrl: string, filename?: string) => {
+    setActiveReceiptId(null);
     setActiveOCRResult(result);
     setActiveImageUrl(imageUrl);
     setActiveSourceFilename(filename);
@@ -77,12 +79,18 @@ export const App: React.FC = () => {
         duration_seconds: receipt.processing_duration || 0,
         total_cost_usd: receipt.processing_cost || 0,
         total_cost_inr: (receipt.processing_cost || 0) * 87.0,
+        intermediate_passes: {
+          book_number: receipt.book_number || '',
+          image_hash: receipt.image_hash || '',
+          stored_original_path: receipt.original_image_path || '',
+        },
       };
 
       const imgUrl = receipt.original_image_path
         ? `/static/samples/${receipt.original_image_path}`
         : '';
 
+      setActiveReceiptId(receipt.id);
       setActiveOCRResult(mappedResult);
       setActiveImageUrl(imgUrl);
       setActiveSourceFilename(receipt.original_image_path);
@@ -128,6 +136,7 @@ export const App: React.FC = () => {
                 result={activeOCRResult}
                 imageUrl={activeImageUrl || ''}
                 sourceFilename={activeSourceFilename}
+                existingReceiptId={activeReceiptId}
                 onBackToScan={() => setCurrentTab('scan')}
                 onSaved={handleSavedReceipt}
               />

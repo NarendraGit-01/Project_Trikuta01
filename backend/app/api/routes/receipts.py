@@ -19,21 +19,79 @@ from backend.app.schemas.receipt import ReceiptCreate, ReceiptListItem, ReceiptO
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
 
+@router.get("/books/summary")
+def get_books_summary(db: Session = Depends(get_db)):
+    """Return categorized folder stats grouped by book number."""
+    from typing import Dict, Any
+    all_receipts = db.query(Receipt.id, Receipt.book_number, Receipt.status, Receipt.is_archived).all()
+
+    archived_count = sum(1 for r in all_receipts if r.is_archived)
+    active_receipts = [r for r in all_receipts if not r.is_archived]
+
+    total_all = len(active_receipts)
+    processed_all = sum(1 for r in active_receipts if r.status == "CONFIRMED")
+    pending_all = sum(1 for r in active_receipts if r.status != "CONFIRMED")
+
+    book_stats: Dict[str, Dict[str, Any]] = {}
+    for r in active_receipts:
+        bn = (r.book_number or "").strip()
+        key = bn if bn else "__UNASSIGNED__"
+        if key not in book_stats:
+            book_stats[key] = {
+                "book_number": key,
+                "display_name": f"Book #{key}" if key != "__UNASSIGNED__" else "Unassigned (పుస్తకం లేనివి)",
+                "total": 0,
+                "processed": 0,
+                "pending": 0,
+            }
+        book_stats[key]["total"] += 1
+        if r.status == "CONFIRMED":
+            book_stats[key]["processed"] += 1
+        else:
+            book_stats[key]["pending"] += 1
+
+    def sort_key(item):
+        k = item["book_number"]
+        if k == "__UNASSIGNED__":
+            return (1, "")
+        return (0, k)
+
+    folders = sorted(book_stats.values(), key=sort_key)
+
+    return {
+        "total_all": total_all,
+        "processed_all": processed_all,
+        "pending_all": pending_all,
+        "archived_count": archived_count,
+        "folders": folders,
+    }
+
+
 @router.get("", response_model=List[ReceiptListItem])
 def list_receipts(
     q: Optional[str] = Query(None, description="Search query (receipt no, name, phone, gothram, book no)"),
     book_number: Optional[str] = Query(None, description="Filter by book number"),
     status_filter: Optional[str] = Query(None, description="PENDING_VERIFICATION, CONFIRMED, INCOMPLETE"),
+    archived_only: bool = Query(False, description="Filter for archived/deleted receipts only"),
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
     query = db.query(Receipt)
 
+    if archived_only:
+        query = query.filter(Receipt.is_archived == True)
+    else:
+        query = query.filter(or_(Receipt.is_archived == False, Receipt.is_archived == None))
+
     if isinstance(book_number, str) and book_number.strip():
-        query = query.filter(Receipt.book_number == book_number.strip())
+        bn = book_number.strip()
+        if bn in ("__UNASSIGNED__", "unassigned", "None", "-"):
+            query = query.filter(or_(Receipt.book_number == None, Receipt.book_number == ""))
+        else:
+            query = query.filter(Receipt.book_number == bn)
 
     if isinstance(status_filter, str) and status_filter.strip():
         query = query.filter(Receipt.status == status_filter.strip())
@@ -96,6 +154,8 @@ def list_receipts(
                 abhishekam_to=r.abhishekam_to,
                 status=r.status,
                 book_number=r.book_number,
+                is_archived=bool(r.is_archived),
+                archived_at=r.archived_at,
                 original_image_url=f"/api/v1/storage/{r.original_image_path}" if r.original_image_path else None,
                 created_at=r.created_at,
             )
@@ -250,12 +310,12 @@ def update_receipt(
                 field_name=field,
                 original_value=str(old_val) if old_val is not None else None,
                 corrected_value=str(new_val) if new_val is not None else "",
-                corrected_by=current_user.id,
+                corrected_by=current_user.id if current_user else None,
             )
             db.add(corr)
             # Record audit
             audit = AuditLog(
-                user_id=current_user.id,
+                user_id=current_user.id if current_user else None,
                 action="UPDATE_FIELD",
                 entity="Receipt",
                 entity_id=receipt.id,
@@ -339,7 +399,7 @@ def confirm_receipt(
         ph.verification_status = "VERIFIED"
 
     audit = AuditLog(
-        user_id=current_user.id,
+        user_id=current_user.id if current_user else None,
         action="CONFIRM_RECORD",
         entity="Receipt",
         entity_id=receipt.id,
@@ -350,6 +410,74 @@ def confirm_receipt(
     db.commit()
     db.refresh(receipt)
     return receipt
+
+
+@router.delete("/{receipt_id}")
+def delete_receipt(
+    receipt_id: int,
+    reason: Optional[str] = Query(None, description="Reason for deletion/archive"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """Soft delete / archive a receipt so it can be restored if accidentally deleted."""
+    receipt = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    receipt.is_archived = True
+    receipt.archived_at = datetime.now(timezone.utc)
+    if reason:
+        receipt.archive_reason = reason
+    receipt.updated_at = datetime.now(timezone.utc)
+
+    audit = AuditLog(
+        user_id=current_user.id if current_user else None,
+        action="ARCHIVE_RECEIPT",
+        entity="Receipt",
+        entity_id=receipt.id,
+        new_value=json.dumps({"receipt_no": receipt.receipt_no, "reason": reason or "User deletion"}),
+    )
+    db.add(audit)
+    db.commit()
+    return {
+        "status": "archived",
+        "receipt_id": receipt.id,
+        "receipt_no": receipt.receipt_no,
+        "message": f"Receipt #{receipt.receipt_no} moved to archive. It can be restored at any time."
+    }
+
+
+@router.post("/{receipt_id}/restore")
+def restore_receipt(
+    receipt_id: int,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """Restore an archived/deleted receipt back to active receipts."""
+    receipt = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    receipt.is_archived = False
+    receipt.archived_at = None
+    receipt.archive_reason = None
+    receipt.updated_at = datetime.now(timezone.utc)
+
+    audit = AuditLog(
+        user_id=current_user.id if current_user else None,
+        action="RESTORE_RECEIPT",
+        entity="Receipt",
+        entity_id=receipt.id,
+        new_value=json.dumps({"receipt_no": receipt.receipt_no, "action": "restored"}),
+    )
+    db.add(audit)
+    db.commit()
+    return {
+        "status": "restored",
+        "receipt_id": receipt.id,
+        "receipt_no": receipt.receipt_no,
+        "message": f"Receipt #{receipt.receipt_no} restored successfully."
+    }
 
 
 @router.post("/{receipt_id}/save-incomplete", response_model=ReceiptOut)
@@ -495,7 +623,11 @@ def export_receipts_excel(
 
     query = db.query(Receipt)
     if book_number and book_number.strip():
-        query = query.filter(Receipt.book_number == book_number.strip())
+        bn = book_number.strip()
+        if bn in ("__UNASSIGNED__", "unassigned", "None", "-"):
+            query = query.filter(or_(Receipt.book_number == None, Receipt.book_number == ""))
+        else:
+            query = query.filter(Receipt.book_number == bn)
     if status_filter and status_filter.strip():
         query = query.filter(Receipt.status == status_filter.strip())
 
@@ -503,7 +635,11 @@ def export_receipts_excel(
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Processed Receipts"
+    if book_number and book_number.strip():
+        clean_title = "Unassigned" if book_number.strip() in ("__UNASSIGNED__", "unassigned", "None", "-") else f"Book {book_number.strip()}"
+        ws.title = clean_title[:31]  # Excel sheet title max 31 chars
+    else:
+        ws.title = "All Receipts"
 
     # Header styling
     header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
@@ -622,7 +758,12 @@ def export_receipts_excel(
     wb.save(output)
     output.seek(0)
 
-    filename = f"temple_receipts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    if book_number and book_number.strip():
+        safe_bn = "unassigned" if book_number.strip() in ("__UNASSIGNED__", "unassigned", "None", "-") else book_number.strip().replace(" ", "_")
+        filename = f"temple_receipts_book_{safe_bn}_{ts}.xlsx"
+    else:
+        filename = f"temple_receipts_all_{ts}.xlsx"
     return Response(
         content=output.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

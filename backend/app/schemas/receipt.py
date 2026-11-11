@@ -29,6 +29,9 @@ class ReceiptBase(BaseModel):
     status: str = Field(default="PENDING_VERIFICATION")  # PENDING_VERIFICATION, CONFIRMED, INCOMPLETE
     book_number: Optional[str] = None
     image_hash: Optional[str] = None
+    is_archived: bool = False
+    archived_at: Optional[datetime] = None
+    archive_reason: Optional[str] = None
 
 
 
@@ -101,6 +104,8 @@ class ReceiptListItem(BaseModel):
     abhishekam_to: Optional[str] = None
     status: str
     book_number: Optional[str] = None
+    is_archived: bool = False
+    archived_at: Optional[datetime] = None
     original_image_url: Optional[str] = None
     created_at: datetime
 

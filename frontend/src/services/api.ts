@@ -1,4 +1,4 @@
-import { GothramSearchItem, PipelineResult, QualityAssessment, Receipt, ReceiptListItem } from '../types';
+import { BooksSummaryResponse, GothramSearchItem, PipelineResult, QualityAssessment, Receipt, ReceiptListItem, StagedReceiptItem } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -65,7 +65,18 @@ export async function processUploadOCR(
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(errorData.detail || 'Uploaded OCR processing failed');
+    // 409 = duplicate image — surface a clear, actionable message
+    if (res.status === 409) {
+      const d = errorData.detail || errorData;
+      const msg = typeof d === 'string'
+        ? d
+        : d.message || `Receipt #${d.receipt_no} was already uploaded (Status: ${d.status}).`;
+      throw new Error(`DUPLICATE: ${msg}`);
+    }
+    const msg = typeof errorData.detail === 'object'
+      ? errorData.detail.message || JSON.stringify(errorData.detail)
+      : errorData.detail || 'Uploaded OCR processing failed';
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -172,10 +183,19 @@ export async function resolvePincode(pincode: string): Promise<PincodeDetails | 
   }
 }
 
+export async function fetchBooksSummary(): Promise<BooksSummaryResponse> {
+  const res = await fetch(`${API_BASE}/receipts/books/summary`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch book summary');
+  }
+  return res.json();
+}
+
 export async function listReceipts(params?: {
   q?: string;
   status?: string;
   book_number?: string;
+  archived_only?: boolean;
   skip?: number;
   limit?: number;
 }): Promise<ReceiptListItem[]> {
@@ -183,6 +203,7 @@ export async function listReceipts(params?: {
   if (params?.q) query.set('q', params.q);
   if (params?.status) query.set('status_filter', params.status);
   if (params?.book_number) query.set('book_number', params.book_number);
+  if (params?.archived_only) query.set('archived_only', 'true');
   if (params?.skip) query.set('skip', String(params.skip));
   if (params?.limit) query.set('limit', String(params.limit));
 

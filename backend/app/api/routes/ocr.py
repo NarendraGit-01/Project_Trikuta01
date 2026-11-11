@@ -14,7 +14,9 @@ from backend.app.core.config import settings
 from backend.app.core.database import SessionLocal
 
 from backend.app.models.receipt import Receipt
+from backend.app.models.staged_image import StagedImage
 from backend.app.storage.local import LocalStorageBackend
+from backend.pipeline.auto_crop import auto_orient_and_crop
 from backend.pipeline.image_loader import prepare_image, to_b64
 from backend.pipeline.image_quality import evaluate_image_quality
 from backend.pipeline.orientation import detect_orientation_heuristic, detect_orientation_with_gemini, apply_rotation
@@ -202,7 +204,8 @@ def process_sample_receipt(req: ProcessSampleRequest):
 async def process_uploaded_receipt(
     file: UploadFile = File(...),
     model_name: Optional[str] = Form(None),
-    skip_transcription: bool = Form(False)
+    skip_transcription: bool = Form(False),
+    book_number: Optional[str] = Form(None)
 ):
     """Run full OCR pipeline on an uploaded receipt image with auto-orientation & cropping."""
     import io
@@ -220,11 +223,11 @@ async def process_uploaded_receipt(
         raise HTTPException(
             status_code=409,
             detail={
-                "message": "Duplicate image detected.",
+                "message": f"This image has already been uploaded (Receipt #{existing.receipt_no}).",
                 "existing_receipt_id": existing.id,
-                "receipt_no": existing.receipt_no,
+                "receipt_no": existing.receipt_no or "",
                 "status": existing.status,
-                "created_at": existing.created_at,
+                "created_at": existing.created_at.isoformat() if existing.created_at else None,
             },
         )
 
@@ -307,6 +310,19 @@ async def process_batch_receipts(
             continue
 
         try:
+            # Duplicate image detection per file
+            img_hash = hashlib.sha256(contents).hexdigest()
+            db = SessionLocal()
+            existing = db.query(Receipt).filter(Receipt.image_hash == img_hash).first()
+            db.close()
+            if existing:
+                batch_results.append(BatchItemResult(
+                    filename=fname,
+                    status="ERROR",
+                    error=f"Duplicate: This image was already uploaded as Receipt #{existing.receipt_no or existing.id} (Status: {existing.status})."
+                ))
+                continue
+
             pil_img = prepare_image(contents)
             cropped_pil, rot, box = auto_orient_and_crop(pil_img)
 
@@ -320,7 +336,12 @@ async def process_batch_receipts(
                 model_name=model_to_use,
                 skip_transcription=skip_transcription
             )
+            res = apply_translation(res)
             res.intermediate_passes["stored_original_path"] = storage_path
+            res.intermediate_passes["image_hash"] = img_hash
+            if book_number:
+                res.intermediate_passes["book_number"] = book_number
+            res = check_and_annotate_duplicate(res)
             batch_results.append(BatchItemResult(
                 filename=fname,
                 status="SUCCESS",
@@ -336,6 +357,156 @@ async def process_batch_receipts(
             ))
 
     return batch_results
+
+
+@router.post("/staging")
+async def stage_upload_receipts(
+    files: List[UploadFile] = File(...),
+    book_number: Optional[str] = Form(None),
+    device_label: Optional[str] = Form("Mobile Device"),
+):
+    """
+    Stage raw uploaded receipt images into persistent queue before processing.
+    Allows mobile users to capture/upload receipts that immediately become
+    available for processing on a desktop or laptop.
+    """
+    staged_items = []
+    storage = LocalStorageBackend(base_dir=settings.STORAGE_DIR)
+    db = SessionLocal()
+
+    try:
+        for upload in files:
+            fname = upload.filename or "receipt.jpg"
+            contents = await upload.read()
+            if not contents:
+                continue
+
+            img_hash = hashlib.sha256(contents).hexdigest()
+            ext = Path(fname).suffix or ".jpg"
+            storage_path = storage.save_file(contents, prefix="staging", extension=ext)
+            file_name_only = Path(storage_path).name
+
+            staged = StagedImage(
+                filename=fname,
+                file_path=storage_path,
+                preview_url=f"/static/storage/{file_name_only}",
+                file_size=len(contents),
+                image_hash=img_hash,
+                book_number=book_number.strip() if book_number else None,
+                device_label=device_label or "Mobile Device",
+                status="PENDING",
+            )
+            db.add(staged)
+            staged_items.append(staged)
+
+        db.commit()
+        for item in staged_items:
+            db.refresh(item)
+    finally:
+        db.close()
+
+    return [
+        {
+            "id": item.id,
+            "filename": item.filename,
+            "file_size": item.file_size,
+            "preview_url": item.preview_url,
+            "book_number": item.book_number,
+            "device_label": item.device_label,
+            "status": item.status,
+            "created_at": item.created_at.isoformat(),
+        }
+        for item in staged_items
+    ]
+
+
+@router.get("/staging")
+def list_staged_receipts():
+    """List all pending staged images waiting to be processed."""
+    db = SessionLocal()
+    try:
+        items = db.query(StagedImage).filter(StagedImage.status == "PENDING").order_by(StagedImage.id.desc()).all()
+        return [
+            {
+                "id": item.id,
+                "filename": item.filename,
+                "file_size": item.file_size,
+                "preview_url": item.preview_url,
+                "book_number": item.book_number,
+                "device_label": item.device_label,
+                "status": item.status,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in items
+        ]
+    finally:
+        db.close()
+
+
+@router.delete("/staging/{staged_id}")
+def delete_staged_receipt(staged_id: int):
+    """Remove a staged image from the queue."""
+    db = SessionLocal()
+    try:
+        item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Staged item not found")
+        db.delete(item)
+        db.commit()
+        return {"status": "deleted", "id": staged_id}
+    finally:
+        db.close()
+
+
+@router.post("/staging/{staged_id}/process", response_model=PipelineResult)
+def process_staged_receipt(
+    staged_id: int,
+    model_name: Optional[str] = None,
+    skip_transcription: bool = True,
+):
+    """Run full OCR pipeline on an already staged image."""
+    db = SessionLocal()
+    try:
+        item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Staged item not found")
+
+        file_full_path = Path(item.file_path)
+        if not file_full_path.exists():
+            file_full_path = Path(settings.STORAGE_DIR) / Path(item.file_path).name
+        if not file_full_path.exists():
+            raise HTTPException(status_code=404, detail="Staged image file missing from disk")
+
+        with open(file_full_path, "rb") as f:
+            contents = f.read()
+
+        from backend.app.pipeline.translation import apply_translation
+        from backend.pipeline.image_loader import prepare_image
+
+        pil_img = prepare_image(contents)
+        cropped_pil, rot, box = auto_orient_and_crop(pil_img)
+
+        model_to_use = model_name or settings.GEMINI_PRIMARY_MODEL
+        result = process_receipt(
+            image_input=cropped_pil,
+            model_name=model_to_use,
+            skip_transcription=skip_transcription,
+        )
+        result = apply_translation(result)
+        result.intermediate_passes["stored_original_path"] = item.file_path
+        result.intermediate_passes["image_hash"] = item.image_hash
+        if item.book_number:
+            result.intermediate_passes["book_number"] = item.book_number
+
+        result = check_and_annotate_duplicate(result)
+
+        # Mark item as PROCESSED in staging
+        item.status = "PROCESSED"
+        db.commit()
+
+        return result
+    finally:
+        db.close()
 
 
 @router.post("/quality-check")

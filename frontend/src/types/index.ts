@@ -69,8 +69,37 @@ export interface ReceiptListItem {
   abhishekam_to?: string;
   status: 'PENDING_VERIFICATION' | 'CONFIRMED' | 'INCOMPLETE';
   book_number?: string;
+  is_archived?: boolean;
+  archived_at?: string;
   original_image_url?: string;
   created_at: string;
+}
+
+export interface StagedReceiptItem {
+  id: number;
+  filename: string;
+  file_size: number;
+  preview_url: string;
+  book_number?: string;
+  device_label?: string;
+  status: string;
+  created_at: string;
+}
+
+export interface BookFolderItem {
+  book_number: string;
+  display_name: string;
+  total: number;
+  processed: number;
+  pending: number;
+}
+
+export interface BooksSummaryResponse {
+  total_all: number;
+  processed_all: number;
+  pending_all: number;
+  archived_count?: number;
+  folders: BookFolderItem[];
 }
 
 export interface QualityAssessment {

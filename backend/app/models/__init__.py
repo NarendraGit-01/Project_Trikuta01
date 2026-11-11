@@ -6,6 +6,7 @@ from backend.app.models.phone import ReceiptPhone
 from backend.app.models.correction import Correction
 from backend.app.models.audit import AuditLog
 from backend.app.models.dispatch import PrasadamDispatch
+from backend.app.models.staged_image import StagedImage
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "Correction",
     "AuditLog",
     "PrasadamDispatch",
+    "StagedImage",
 ]
