@@ -96,13 +96,24 @@ app.include_router(api_router)
 
 
 # Mount built React frontend assets if present
-frontend_dist = Path("frontend/dist")
-if not frontend_dist.exists():
-    frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+frontend_dist = Path("public")
+if not (frontend_dist / "index.html").exists():
+    frontend_dist = Path("frontend/dist")
+if not (frontend_dist / "index.html").exists():
+    frontend_dist = Path(__file__).resolve().parent.parent.parent / "public"
 
 assets_dir = frontend_dist / "assets"
 if assets_dir.exists():
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+
+@app.get("/api/index.py")
+def handle_vercel_direct():
+    return {
+        "status": "healthy",
+        "app": settings.APP_NAME,
+        "api_v1": "/api/v1",
+    }
 
 
 @app.get("/")
