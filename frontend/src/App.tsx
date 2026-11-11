@@ -4,12 +4,12 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ScanPage } from './pages/ScanPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ReceiptListPage } from './pages/ReceiptListPage';
-import { StagedUploadsPage } from './pages/StagedUploadsPage';
 import { PoojaListPage } from './pages/PoojaListPage';
 import { DispatchPage } from './pages/DispatchPage';
 import { GothramMasterPage } from './pages/GothramMasterPage';
 import { PipelineResult } from './types';
 import { getReceipt } from './services/api';
+import { updateStoredReceipt } from './services/receiptStore';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('scan');
@@ -17,13 +17,20 @@ export const App: React.FC = () => {
 
   // OCR Review State
   const [activeReceiptId, setActiveReceiptId] = useState<number | null>(null);
+  const [activeStoredReceiptId, setActiveStoredReceiptId] = useState<string | undefined>(undefined);
   const [activeOCRResult, setActiveOCRResult] = useState<PipelineResult | null>(null);
   const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
   const [activeSourceFilename, setActiveSourceFilename] = useState<string | undefined>(undefined);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
-  const handleOCRComplete = (result: PipelineResult, imageUrl: string, filename?: string) => {
+  const handleOCRComplete = (
+    result: PipelineResult,
+    imageUrl: string,
+    filename?: string,
+    storedReceiptId?: string
+  ) => {
     setActiveReceiptId(null);
+    setActiveStoredReceiptId(storedReceiptId);
     setActiveOCRResult(result);
     setActiveImageUrl(imageUrl);
     setActiveSourceFilename(filename);
@@ -32,7 +39,17 @@ export const App: React.FC = () => {
     setTimeout(() => setSuccessBanner(null), 6000);
   };
 
-  const handleSavedReceipt = (receiptId: number) => {
+  const handleSavedReceipt = async (receiptId: number) => {
+    if (activeStoredReceiptId) {
+      try {
+        await updateStoredReceipt(activeStoredReceiptId, {
+          reviewed: true,
+          savedReceiptId: receiptId,
+        });
+      } catch (e) {
+        console.warn('Could not update stored receipt status:', e);
+      }
+    }
     setSuccessBanner(`Receipt #${receiptId} has been successfully recorded in the database.`);
     setTimeout(() => setSuccessBanner(null), 6000);
     setCurrentTab('receipts');
@@ -127,12 +144,6 @@ export const App: React.FC = () => {
               activeModel={activeModel}
               onChangeModel={setActiveModel}
             />
-          </ErrorBoundary>
-        )}
-
-        {currentTab === 'staged' && (
-          <ErrorBoundary fallbackTitle="Staged Uploads Error" onReset={() => setCurrentTab('staged')}>
-            <StagedUploadsPage onProcessed={handleOCRComplete} />
           </ErrorBoundary>
         )}
 

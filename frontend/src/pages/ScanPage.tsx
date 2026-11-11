@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Camera,
   Upload,
@@ -16,28 +16,34 @@ import {
   Eye,
   X,
   BookOpen,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Plus,
+  CheckCheck,
 } from 'lucide-react';
-import {
-  processUploadOCR,
-  autoCropImage,
-} from '../services/api';
+import { processUploadOCR, autoCropImage } from '../services/api';
 import { PipelineResult } from '../types';
+import {
+  StoredReceiptItem,
+  getAllStoredReceipts,
+  addStoredReceipts,
+  updateStoredReceipt,
+  deleteStoredReceipt,
+  deleteStoredReceipts,
+  clearAllStoredReceipts,
+} from '../services/receiptStore';
 
 interface ScanPageProps {
-  onOCRComplete: (result: PipelineResult, imageUrl: string, filename?: string) => void;
+  onOCRComplete: (
+    result: PipelineResult,
+    imageUrl: string,
+    filename?: string,
+    storedReceiptId?: string
+  ) => void;
   activeModel: string;
   onChangeModel: (model: string) => void;
-}
-
-interface BatchQueueItem {
-  id: string;
-  file: File;
-  filename: string;
-  size: number;
-  previewUrl: string;
-  status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
-  result?: PipelineResult;
-  error?: string;
 }
 
 export const ScanPage: React.FC<ScanPageProps> = ({
@@ -45,36 +51,129 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   activeModel,
   onChangeModel,
 }) => {
-  const [activeTab, setActiveTab] = useState<'single' | 'batch'>('single');
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewRotation, setPreviewRotation] = useState<number>(0);
-  const [isCropping, setIsCropping] = useState<boolean>(false);
-  const [skipTranscription, setSkipTranscription] = useState<boolean>(true);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [processingStage, setProcessingStage] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-  const [singleBookNumber, setSingleBookNumber] = useState<string>('');
+  // Master queue loaded from persistent IndexedDB
+  const [receipts, setReceipts] = useState<StoredReceiptItem[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isLoadingStore, setIsLoadingStore] = useState<boolean>(true);
 
-  // Drag and drop states
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const dragCounter = useRef(0);
+  // Active book number for new uploads & filtering
+  const [activeBookNumber, setActiveBookNumber] = useState<string>('');
+  const [selectedBookFilter, setSelectedBookFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'SUCCESS' | 'ERROR'>('ALL');
 
-  // Batch processing state
-  const [batchQueue, setBatchQueue] = useState<BatchQueueItem[]>([]);
+  // OCR Execution States
+  const [isProcessingSingle, setIsProcessingSingle] = useState<boolean>(false);
+  const [singleStage, setSingleStage] = useState<string>('');
   const [isBatchProcessing, setIsBatchProcessing] = useState<boolean>(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number }>({
     current: 0,
     total: 0,
   });
+  const [isCropping, setIsCropping] = useState<boolean>(false);
+  const [skipTranscription, setSkipTranscription] = useState<boolean>(true);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  // Book Number Modal State (Batch mode)
-  const [showBookNumberModal, setShowBookNumberModal] = useState<boolean>(false);
-  const [bulkBookNumber, setBulkBookNumber] = useState<string>('');
-
+  // Drag and drop states
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const addMoreInputRef = useRef<HTMLInputElement>(null);
 
-  /* ── DRAG & DROP HANDLERS ───────────────────────────────── */
+  /* ── 1. LOAD FROM INDEXEDDB ON MOUNT ────────────────────── */
+  const loadStoredQueue = async () => {
+    setIsLoadingStore(true);
+    try {
+      const items = await getAllStoredReceipts();
+      setReceipts(items);
+      if (items.length > 0 && !selectedId) {
+        setSelectedId(items[0].id);
+      }
+    } catch (err: any) {
+      console.error('Error loading stored receipts from IndexedDB:', err);
+    } finally {
+      setIsLoadingStore(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStoredQueue();
+  }, []);
+
+  /* ── 2. DERIVED ACTIVE RECEIPT & FILTERED LIST ───────────── */
+  // Available distinct book numbers
+  const distinctBooks = useMemo(() => {
+    const set = new Set<string>();
+    receipts.forEach((r) => {
+      if (r.bookNumber && r.bookNumber.trim()) {
+        set.add(r.bookNumber.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [receipts]);
+
+  // Filtered queue
+  const filteredReceipts = useMemo(() => {
+    return receipts.filter((r) => {
+      if (selectedBookFilter !== 'ALL') {
+        if ((r.bookNumber || '').trim() !== selectedBookFilter) return false;
+      }
+      if (statusFilter !== 'ALL') {
+        if (r.status !== statusFilter) return false;
+      }
+      return true;
+    });
+  }, [receipts, selectedBookFilter, statusFilter]);
+
+  // Active selected item
+  const selectedReceipt = useMemo(() => {
+    if (!selectedId) return filteredReceipts[0] || receipts[0] || null;
+    return receipts.find((r) => r.id === selectedId) || filteredReceipts[0] || receipts[0] || null;
+  }, [receipts, selectedId, filteredReceipts]);
+
+  // Index of active receipt in filtered queue
+  const activeIndex = useMemo(() => {
+    if (!selectedReceipt) return -1;
+    return filteredReceipts.findIndex((r) => r.id === selectedReceipt.id);
+  }, [filteredReceipts, selectedReceipt]);
+
+  /* ── 3. FILE INGESTION (MULTI-SELECT SUPPORT) ────────────── */
+  const ingestFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setErrorNotice(null);
+
+    const now = Date.now();
+    const newItems: StoredReceiptItem[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const uniqueId = `rec_${now}_${i}_${Math.random().toString(36).substring(2, 7)}`;
+      newItems.push({
+        id: uniqueId,
+        filename: f.name,
+        fileSize: f.size,
+        blob: f,
+        previewUrl: URL.createObjectURL(f),
+        bookNumber: activeBookNumber.trim() || undefined,
+        uploadedAt: now + i,
+        rotation: 0,
+        status: 'PENDING',
+      });
+    }
+
+    // Persist immediately to IndexedDB
+    try {
+      await addStoredReceipts(newItems);
+      setReceipts((prev) => [...prev, ...newItems]);
+      if (newItems.length > 0) {
+        setSelectedId(newItems[0].id);
+      }
+    } catch (err: any) {
+      console.error('Failed to save receipts in IndexedDB:', err);
+      setErrorNotice('Could not persist receipts to local storage: ' + (err.message || 'Storage error'));
+    }
+  };
+
+  /* ── 4. DRAG & DROP HANDLERS ────────────────────────────── */
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -107,51 +206,108 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 
     const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
     if (files.length === 0) return;
+    await ingestFiles(files);
+  };
 
-    if (files.length === 1 && activeTab === 'single') {
-      await handleSingleFileSelected(files[0]);
-    } else {
-      addFilesToBatch(files);
-      setActiveTab('batch');
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+    await ingestFiles(files);
+    e.target.value = '';
+  };
+
+  /* ── 5. ITEM CONTROLS (ROTATE, DELETE, SELECT) ───────────── */
+  const handleRotate = async (delta: number) => {
+    if (!selectedReceipt) return;
+    const newRot = (selectedReceipt.rotation + delta + 360) % 360;
+    setReceipts((prev) =>
+      prev.map((r) => (r.id === selectedReceipt.id ? { ...r, rotation: newRot } : r))
+    );
+    await updateStoredReceipt(selectedReceipt.id, { rotation: newRot });
+  };
+
+  const handleDeleteItem = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      await deleteStoredReceipt(id);
+      setReceipts((prev) => prev.filter((r) => r.id !== id));
+      if (selectedId === id) {
+        const remaining = receipts.filter((r) => r.id !== id);
+        setSelectedId(remaining.length > 0 ? remaining[0].id : null);
+      }
+    } catch (err: any) {
+      console.error('Failed to delete item:', err);
     }
   };
 
-  /* ── BATCH QUEUE MANAGEMENT ─────────────────────────────── */
-  const addFilesToBatch = (files: File[]) => {
-    const newItems: BatchQueueItem[] = files.map((file) => ({
-      id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      file,
-      filename: file.name,
-      size: file.size,
-      previewUrl: URL.createObjectURL(file),
-      status: 'PENDING',
-    }));
-    setBatchQueue((prev) => [...prev, ...newItems]);
-    setActiveTab('batch');
+  const handleClearCompleted = async () => {
+    const completedIds = receipts.filter((r) => r.status === 'SUCCESS' || r.reviewed).map((r) => r.id);
+    if (completedIds.length === 0) return;
+    if (!window.confirm(`Clear ${completedIds.length} processed receipts from the local queue?`)) return;
+
+    try {
+      await deleteStoredReceipts(completedIds);
+      setReceipts((prev) => prev.filter((r) => !completedIds.includes(r.id)));
+      if (selectedId && completedIds.includes(selectedId)) {
+        const remaining = receipts.filter((r) => !completedIds.includes(r.id));
+        setSelectedId(remaining.length > 0 ? remaining[0].id : null);
+      }
+    } catch (err: any) {
+      console.error('Failed to clear completed items:', err);
+    }
   };
 
-  const removeBatchItem = (id: string) => {
-    setBatchQueue((prev) => prev.filter((item) => item.id !== id));
+  const handleClearAll = async () => {
+    if (receipts.length === 0) return;
+    if (!window.confirm(`Are you sure you want to remove all ${receipts.length} receipts from the queue?`)) return;
+
+    try {
+      await clearAllStoredReceipts();
+      setReceipts([]);
+      setSelectedId(null);
+    } catch (err: any) {
+      console.error('Failed to clear all receipts:', err);
+    }
   };
 
-  const clearBatchQueue = () => {
-    setBatchQueue([]);
+  const handlePrevReceipt = () => {
+    if (activeIndex > 0) {
+      setSelectedId(filteredReceipts[activeIndex - 1].id);
+    }
   };
 
-  /* ── SINGLE FILE SELECTION ──────────────────────────────── */
-  const handleSingleFileSelected = async (file: File) => {
-    setUploadedFile(file);
-    const localUrl = URL.createObjectURL(file);
-    setPreviewUrl(localUrl);
-    setPreviewRotation(0);
-    setError(null);
+  const handleNextReceipt = () => {
+    if (activeIndex >= 0 && activeIndex < filteredReceipts.length - 1) {
+      setSelectedId(filteredReceipts[activeIndex + 1].id);
+    }
+  };
 
-    // Auto-orient and crop background automatically
+  /* ── 6. AUTO-CROP ACTIVE RECEIPT ────────────────────────── */
+  const handleAutoCropSelected = async () => {
+    if (!selectedReceipt) return;
     setIsCropping(true);
     try {
+      const file = new File([selectedReceipt.blob], selectedReceipt.filename, {
+        type: selectedReceipt.blob.type || 'image/jpeg',
+      });
       const cropRes = await autoCropImage(file);
       if (cropRes && cropRes.url) {
-        setPreviewUrl(cropRes.url);
+        // Fetch cropped blob to store persistently
+        const res = await fetch(cropRes.url);
+        const croppedBlob = await res.blob();
+        const newPreviewUrl = URL.createObjectURL(croppedBlob);
+
+        setReceipts((prev) =>
+          prev.map((r) =>
+            r.id === selectedReceipt.id
+              ? { ...r, blob: croppedBlob, previewUrl: newPreviewUrl, rotation: 0 }
+              : r
+          )
+        );
+        await updateStoredReceipt(selectedReceipt.id, {
+          blob: croppedBlob,
+          rotation: 0,
+        });
       }
     } catch (err) {
       console.warn('Auto-crop notice:', err);
@@ -160,96 +316,88 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     }
   };
 
-  const handleClearSingleFile = () => {
-    setUploadedFile(null);
-    setPreviewUrl(null);
-    setPreviewRotation(0);
-    setError(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
-
-    if (files.length === 1 && activeTab === 'single') {
-      await handleSingleFileSelected(files[0]);
-    } else {
-      addFilesToBatch(files);
-      setActiveTab('batch');
-    }
-    e.target.value = '';
-  };
-
-  const handleRotateLeft = () => {
-    setPreviewRotation((prev) => (prev - 90 + 360) % 360);
-  };
-
-  const handleRotateRight = () => {
-    setPreviewRotation((prev) => (prev + 90) % 360);
-  };
-
-  /* ── SINGLE OCR EXTRACTION ──────────────────────────────── */
-  const handleStartOCR = async () => {
-    if (!uploadedFile) {
-      setError('Please upload a receipt image first.');
-      return;
-    }
-
-    setIsProcessing(true);
-    setError(null);
+  /* ── 7. RUN OCR (SINGLE RECEIPT) ────────────────────────── */
+  const handleRunOCRForReceipt = async (item: StoredReceiptItem, autoNavigateToReview = true) => {
+    setIsProcessingSingle(true);
+    setErrorNotice(null);
 
     const stages = [
-      'Pass 0: OpenCV Edge Alignment & Tight Receipt Cropping (15ms)...',
+      'Pass 0: OpenCV Edge Alignment & Tight Receipt Cropping...',
       'Pass 1: Structured Multimodal Field Extraction & Devotee Names...',
       'Pass 2: 2,099 Gothram Master Phonetic RapidFuzz Matching...',
       'Pass 3: Consensus & Dual-Script Telugu/English Calibration...',
     ];
 
     let stageIdx = 0;
-    setProcessingStage(stages[0]);
+    setSingleStage(stages[0]);
     const timer = setInterval(() => {
       stageIdx++;
       if (stageIdx < stages.length) {
-        setProcessingStage(stages[stageIdx]);
+        setSingleStage(stages[stageIdx]);
       }
     }, 1500);
 
+    // Update status to PROCESSING
+    setReceipts((prev) =>
+      prev.map((r) => (r.id === item.id ? { ...r, status: 'PROCESSING', error: undefined } : r))
+    );
+    await updateStoredReceipt(item.id, { status: 'PROCESSING', error: undefined });
+
     try {
+      const file = new File([item.blob], item.filename, {
+        type: item.blob.type || 'image/jpeg',
+      });
+
       const result: PipelineResult = await processUploadOCR(
-        uploadedFile,
+        file,
         activeModel,
         skipTranscription,
-        singleBookNumber || undefined
+        item.bookNumber || undefined
       );
 
-      const finalImgUrl = previewUrl || URL.createObjectURL(uploadedFile);
-
       clearInterval(timer);
-      setIsProcessing(false);
-      onOCRComplete(result, finalImgUrl, uploadedFile.name);
+      setIsProcessingSingle(false);
+
+      // Update item with result in state and IndexedDB
+      setReceipts((prev) =>
+        prev.map((r) =>
+          r.id === item.id
+            ? { ...r, status: 'SUCCESS', result, error: undefined }
+            : r
+        )
+      );
+      await updateStoredReceipt(item.id, {
+        status: 'SUCCESS',
+        result,
+        error: undefined,
+      });
+
+      if (autoNavigateToReview) {
+        const finalUrl = item.previewUrl || URL.createObjectURL(item.blob);
+        onOCRComplete(result, finalUrl, item.filename, item.id);
+      }
     } catch (err: any) {
       clearInterval(timer);
-      setIsProcessing(false);
-      setError(err.message || 'OCR processing failed. Please verify API key and connection.');
+      setIsProcessingSingle(false);
+      const errMsg = err.message || 'OCR processing failed. Please verify API key and connection.';
+      setErrorNotice(errMsg);
+
+      setReceipts((prev) =>
+        prev.map((r) => (r.id === item.id ? { ...r, status: 'ERROR', error: errMsg } : r))
+      );
+      await updateStoredReceipt(item.id, { status: 'ERROR', error: errMsg });
     }
   };
 
-  /* ── BATCH OCR PROCESSING ───────────────────────────────── */
-  const handleOpenBatchModal = () => {
-    const pendingItems = batchQueue.filter((item) => item.status === 'PENDING' || item.status === 'ERROR');
-    if (pendingItems.length === 0) return;
-    setShowBookNumberModal(true);
-  };
-
-  const handleStartBatchOCR = async (bookNoToUse?: string) => {
-    setShowBookNumberModal(false);
-    const assignedBookNumber = bookNoToUse !== undefined ? bookNoToUse : bulkBookNumber;
-
-    const pendingItems = batchQueue.filter((item) => item.status === 'PENDING' || item.status === 'ERROR');
-    if (pendingItems.length === 0) return;
+  /* ── 8. RUN BATCH OCR (ALL PENDING IN QUEUE) ─────────────── */
+  const handleRunBatchOCR = async () => {
+    const pendingItems = filteredReceipts.filter(
+      (r) => r.status === 'PENDING' || r.status === 'ERROR'
+    );
+    if (pendingItems.length === 0) {
+      alert('No pending receipts to process in the current view.');
+      return;
+    }
 
     setIsBatchProcessing(true);
     setBatchProgress({ current: 0, total: pendingItems.length });
@@ -257,58 +405,32 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     for (let i = 0; i < pendingItems.length; i++) {
       const item = pendingItems[i];
       setBatchProgress({ current: i + 1, total: pendingItems.length });
+      setSelectedId(item.id);
 
-      setBatchQueue((prev) =>
-        prev.map((q) => (q.id === item.id ? { ...q, status: 'PROCESSING' } : q))
-      );
-
-      try {
-        const res: PipelineResult = await processUploadOCR(
-          item.file,
-          activeModel,
-          skipTranscription,
-          assignedBookNumber || undefined
-        );
-
-        if (assignedBookNumber && res.intermediate_passes) {
-          (res.intermediate_passes as any).book_number = assignedBookNumber;
-        }
-
-        setBatchQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? {
-                  ...q,
-                  status: 'SUCCESS',
-                  result: res,
-                  previewUrl: item.previewUrl,
-                }
-              : q
-          )
-        );
-      } catch (err: any) {
-        setBatchQueue((prev) =>
-          prev.map((q) =>
-            q.id === item.id
-              ? {
-                  ...q,
-                  status: 'ERROR',
-                  error: err.message || 'Processing failed',
-                }
-              : q
-          )
-        );
-      }
+      // Run OCR without auto-navigating away so batch can continue uninterrupted
+      await handleRunOCRForReceipt(item, false);
     }
 
     setIsBatchProcessing(false);
   };
 
-  const handleReviewBatchItem = (item: BatchQueueItem) => {
+  /* ── 9. VIEW / REVIEW PROCESSED RECEIPT ──────────────────── */
+  const handleOpenReview = (item: StoredReceiptItem) => {
     if (item.result) {
-      onOCRComplete(item.result, item.previewUrl, item.filename);
+      const finalUrl = item.previewUrl || URL.createObjectURL(item.blob);
+      onOCRComplete(item.result, finalUrl, item.filename, item.id);
     }
   };
+
+  // Status statistics for header
+  const stats = useMemo(() => {
+    const total = receipts.length;
+    const pending = receipts.filter((r) => r.status === 'PENDING').length;
+    const processing = receipts.filter((r) => r.status === 'PROCESSING').length;
+    const success = receipts.filter((r) => r.status === 'SUCCESS').length;
+    const errors = receipts.filter((r) => r.status === 'ERROR').length;
+    return { total, pending, processing, success, errors };
+  }, [receipts]);
 
   return (
     <div
@@ -324,441 +446,271 @@ export const ScanPage: React.FC<ScanPageProps> = ({
           <Upload className="w-16 h-16 text-amber-300 animate-bounce mb-3" />
           <h2 className="text-2xl font-bold tracking-wide">Drop Receipt Images Here</h2>
           <p className="text-amber-200 mt-1 text-sm">
-            Multiple images will be added to the Batch Processing Queue automatically.
+            Select 50+ receipts at once. They will be saved to your local workspace automatically.
           </p>
         </div>
       )}
 
-      {/* Main Container - Widened to max-w-[1650px] like ReviewPage */}
-      <div className="max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Title Bar & Tabs */}
-        <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      {/* Main Container - max-w-[1650px] like ReviewPage */}
+      <div className="max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8 py-5">
+        {/* Top Control Bar */}
+        <div className="mb-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+          {/* Title & Queue Stats */}
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 font-serif flex items-center space-x-2">
-              <span>రసీదు స్కాన్ & AI డేటా గుర్తింపు</span>
-              <span className="text-sm font-sans font-normal text-gray-500">
-                (Receipt Scan & OCR Extraction)
-              </span>
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Upload temple receipts to extract Devotee Names, Gothram (matched against 2,099 Master List), Dates, Amount & Phones.
-            </p>
-          </div>
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-bold text-gray-900 font-serif flex items-center space-x-2">
+                <span>రసీదు స్కాన్ & AI డేటా గుర్తింపు</span>
+                <span className="text-xs font-sans font-normal text-gray-500">
+                  (Scan & OCR Workstation)
+                </span>
+              </h2>
 
-          {/* Mode Switcher Tabs + Active Model */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-gray-200 p-1 rounded-xl flex items-center text-xs font-semibold">
-              <button
-                onClick={() => setActiveTab('single')}
-                className={`px-3.5 py-1.5 rounded-lg transition-all ${
-                  activeTab === 'single'
-                    ? 'bg-white text-gray-900 shadow-sm font-bold'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Single Receipt
-              </button>
-              <button
-                onClick={() => setActiveTab('batch')}
-                className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 ${
-                  activeTab === 'batch'
-                    ? 'bg-amber-600 text-white shadow-sm font-bold'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Bulk / Batch Queue</span>
-                {batchQueue.length > 0 && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                      activeTab === 'batch' ? 'bg-amber-800 text-amber-100' : 'bg-amber-200 text-amber-900'
-                    }`}
-                  >
-                    {batchQueue.length}
-                  </span>
-                )}
-              </button>
+              {/* Persistent Queue Count Badge */}
+              <span className="bg-amber-100 text-amber-900 font-bold px-2.5 py-0.5 rounded-full text-xs border border-amber-300">
+                {stats.total} Receipts Loaded
+              </span>
             </div>
 
-            {/* Model Selector */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 flex items-center space-x-2 shadow-sm text-xs">
+            {/* Quick Metrics */}
+            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mt-1.5 font-medium">
+              <span className="flex items-center space-x-1">
+                <span className="w-2 h-2 rounded-full bg-slate-400" />
+                <span>{stats.pending} Pending</span>
+              </span>
+              <span>•</span>
+              <span className="flex items-center space-x-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-emerald-700">{stats.success} Ready to Review</span>
+              </span>
+              {stats.errors > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center space-x-1 text-red-600">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <span>{stats.errors} Failed</span>
+                  </span>
+                </>
+              )}
+              <span>•</span>
+              <span className="text-gray-400 text-[11px]">
+                Saved locally in browser (retained on refresh)
+              </span>
+            </div>
+          </div>
+
+          {/* Action Tools & Book Assignation */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Active Book Assignment Input */}
+            <div className="flex items-center space-x-1.5 bg-gray-50 border border-gray-300 rounded-xl px-2.5 py-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-amber-700" />
+              <label className="text-[11px] font-bold text-gray-600 uppercase">Book #:</label>
+              <input
+                type="text"
+                value={activeBookNumber}
+                onChange={(e) => setActiveBookNumber(e.target.value)}
+                placeholder="e.g. 01 or B-12"
+                className="w-24 text-xs font-mono font-bold text-gray-900 bg-white border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+
+            {/* Hidden File Input with MULTIPLE=true */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleFileInputChange}
+              className="hidden"
+            />
+
+            {/* Multi-Select Upload Button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Receipts (Multi-Select)</span>
+            </button>
+
+            {/* Batch OCR Execution */}
+            <button
+              onClick={handleRunBatchOCR}
+              disabled={isBatchProcessing || isProcessingSingle || stats.pending === 0}
+              className="flex items-center space-x-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+            >
+              <Zap className="w-3.5 h-3.5 fill-emerald-200" />
+              <span>
+                {isBatchProcessing
+                  ? `Processing ${batchProgress.current}/${batchProgress.total}...`
+                  : `Run OCR on All Pending (${stats.pending})`}
+              </span>
+            </button>
+
+            {/* AI Model Selector */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-1.5 flex items-center space-x-1.5 text-xs">
               <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-              <span className="font-semibold text-amber-900">AI Model:</span>
               <select
                 value={activeModel}
                 onChange={(e) => onChangeModel(e.target.value)}
-                disabled={isProcessing || isBatchProcessing}
-                className="bg-white border border-amber-300 rounded px-2 py-0.5 text-gray-800 font-medium focus:outline-none text-xs"
+                disabled={isProcessingSingle || isBatchProcessing}
+                className="bg-white border border-amber-300 rounded px-1.5 py-0.5 text-gray-800 font-medium text-xs focus:outline-none"
               >
-                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Ultra Fast & Accurate)</option>
-                <option value="gemini-3.5-flash">gemini-3.5-flash (Standard)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Fast)</option>
+                <option value="gemini-3.5-flash">gemini-3.5-flash</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* Error Notice */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start space-x-3 text-red-800 text-sm animate-fade-in">
-            <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+        {/* Error Alert */}
+        {errorNotice && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start space-x-3 text-red-800 text-xs animate-fade-in">
+            <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="font-semibold">Processing Notice</p>
-              <p className="text-red-700 mt-0.5">{error}</p>
+              <span className="font-bold">Notice: </span>
+              <span>{errorNotice}</span>
             </div>
-            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600">
-              <X className="w-4 h-4" />
+            <button onClick={() => setErrorNotice(null)} className="text-red-400 hover:text-red-600">
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
-        {/* ── TAB 1: SINGLE RECEIPT MODE (WIDER PREVIEW LAYOUT) ────────────────────── */}
-        {activeTab === 'single' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column: WIDE RECEIPT PREVIEW (8 cols out of 12) */}
-            <div className="lg:col-span-8 flex flex-col">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col min-h-[660px]">
-                {/* Header Toolbar */}
-                <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
-                      <Camera className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-gray-800 font-serif">
-                        Receipt Preview (రసీదు ప్రివ్యూ)
-                      </h3>
-                      <p className="text-[11px] text-gray-400">
-                        {uploadedFile
-                          ? `${uploadedFile.name} • ${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB`
-                          : 'No receipt loaded yet'}
-                      </p>
-                    </div>
+        {/* ── WORKSPACE GRID: WIDE PREVIEW (8 COLS) + QUEUE SIDEBAR (4 COLS) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* ════════ LEFT COLUMN: WIDE ACTIVE RECEIPT PREVIEW (8 COLS) ════════ */}
+          <div className="lg:col-span-8 flex flex-col space-y-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col min-h-[680px]">
+              {/* Preview Header & Controls */}
+              <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-100 gap-2 mb-4">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                    <Camera className="w-4 h-4" />
                   </div>
-
-                  {previewUrl && (
-                    <div className="flex items-center space-x-2">
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center space-x-1">
-                        <Crop className="w-3 h-3" />
-                        <span>Auto-Aligned</span>
-                      </span>
-
-                      {/* Rotation Controls */}
-                      <button
-                        type="button"
-                        onClick={handleRotateLeft}
-                        title="Rotate Left (90° CCW)"
-                        className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span className="text-[10px]">↺ 90°</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRotateRight}
-                        title="Rotate Right (90° CW)"
-                        className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
-                      >
-                        <RotateCw className="w-3.5 h-3.5" />
-                        <span className="text-[10px]">↻ 90°</span>
-                      </button>
-
-                      {/* Clear / Remove Button */}
-                      <button
-                        type="button"
-                        onClick={handleClearSingleFile}
-                        title="Remove photo"
-                        className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800 font-serif flex items-center space-x-2">
+                      <span>Receipt Preview</span>
+                      {selectedReceipt?.bookNumber && (
+                        <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-mono font-bold px-2 py-0.2 rounded-full">
+                          Book: {selectedReceipt.bookNumber}
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[11px] text-gray-400">
+                      {selectedReceipt
+                        ? `${selectedReceipt.filename} • ${(selectedReceipt.fileSize / 1024 / 1024).toFixed(2)} MB`
+                        : 'No receipt selected'}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Wide Image Canvas Container */}
-                <div className="relative flex-1 min-h-[540px] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-gray-300 shadow-inner">
-                  {isCropping && (
-                    <div className="absolute inset-0 bg-slate-900/80 z-20 flex flex-col items-center justify-center text-white backdrop-blur-sm">
-                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-3 border-amber-400 border-t-transparent mb-2" />
-                      <p className="text-xs font-semibold text-amber-200">Auto-orienting & tightly cropping slip...</p>
-                    </div>
-                  )}
-
-                  {previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="Receipt Preview"
-                      style={{ transform: `rotate(${previewRotation}deg)` }}
-                      className="max-h-[600px] max-w-full w-auto object-contain rounded-lg shadow-2xl transition-transform duration-200"
-                    />
-                  ) : (
-                    /* Large Empty State Dropzone within preview */
-                    <label
-                      htmlFor="preview-dropzone-input"
-                      className="cursor-pointer flex flex-col items-center justify-center text-center p-8 max-w-md w-full border-2 border-dashed border-slate-700 hover:border-amber-400 rounded-2xl transition-all group"
-                    >
-                      <div className="w-16 h-16 rounded-full bg-slate-800 group-hover:bg-amber-900/40 border border-slate-700 group-hover:border-amber-500/50 flex items-center justify-center mb-4 transition-all shadow-md">
-                        <Upload className="w-8 h-8 text-amber-400 group-hover:scale-110 transition-transform" />
-                      </div>
-                      <h4 className="text-base font-bold text-white mb-1">
-                        Upload a Receipt Image
-                      </h4>
-                      <p className="text-xs text-slate-400 max-w-xs mb-4">
-                        Drag and drop your temple receipt slip here, or click to browse from your device.
-                      </p>
-                      <span className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center space-x-1.5">
-                        <Camera className="w-3.5 h-3.5" />
-                        <span>Select Receipt Photo</span>
+                {selectedReceipt && (
+                  <div className="flex items-center space-x-2">
+                    {/* Navigation: Prev / Next Receipt */}
+                    <div className="flex items-center space-x-1 border border-gray-200 rounded-lg p-0.5 bg-gray-50 text-xs">
+                      <button
+                        onClick={handlePrevReceipt}
+                        disabled={activeIndex <= 0}
+                        title="Previous Receipt"
+                        className="p-1 rounded hover:bg-white disabled:opacity-30 text-gray-600"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="px-1 text-[11px] font-mono font-bold text-gray-700">
+                        {activeIndex + 1} / {filteredReceipts.length}
                       </span>
-                      <input
-                        id="preview-dropzone-input"
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileInputChange}
-                        className="hidden"
-                      />
-                    </label>
-                  )}
-                </div>
+                      <button
+                        onClick={handleNextReceipt}
+                        disabled={activeIndex >= filteredReceipts.length - 1}
+                        title="Next Receipt"
+                        className="p-1 rounded hover:bg-white disabled:opacity-30 text-gray-600"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                {/* Slip Details Footnote */}
-                {previewUrl && (
-                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
-                    <span className="flex items-center space-x-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span>Ready for OCR. Background auto-trimmed to slip boundaries.</span>
-                    </span>
+                    {/* Auto-Crop Button */}
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-amber-700 hover:text-amber-900 font-semibold text-xs"
+                      onClick={handleAutoCropSelected}
+                      disabled={isCropping}
+                      title="Auto-detect slip edges & crop background"
+                      className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
                     >
-                      Change Photo
+                      <Crop className="w-3.5 h-3.5" />
+                      <span className="text-[10px]">Crop</span>
+                    </button>
+
+                    {/* Rotation Controls */}
+                    <button
+                      type="button"
+                      onClick={() => handleRotate(-90)}
+                      title="Rotate Left (90° CCW)"
+                      className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span className="text-[10px]">↺ 90°</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRotate(90)}
+                      title="Rotate Right (90° CW)"
+                      className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span className="text-[10px]">↻ 90°</span>
+                    </button>
+
+                    {/* Delete Item */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteItem(selectedReceipt.id)}
+                      title="Delete this receipt photo"
+                      className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Right Column: UPLOAD CONTROLS & RUN OCR (4 cols out of 12) */}
-            <div className="lg:col-span-4 space-y-5">
-              {/* Upload Card */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center space-x-2 mb-3">
-                  <Upload className="w-4 h-4 text-amber-700" />
-                  <span>Upload Receipt</span>
-                </h3>
-
-                <label className="border-2 border-dashed border-gray-300 hover:border-amber-500 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-gray-50 hover:bg-amber-50/30 text-center">
-                  <Camera className="w-7 h-7 text-gray-400 mb-1.5" />
-                  <span className="text-xs font-semibold text-gray-800">
-                    {uploadedFile ? 'Click to replace photo' : 'Click to browse receipt photo'}
-                  </span>
-                  <span className="text-[11px] text-gray-400 mt-0.5">
-                    Supports JPEG, PNG, WEBP, HEIC
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileInputChange}
-                    className="hidden"
-                  />
-                </label>
-
-                {uploadedFile && (
-                  <div className="mt-3 p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
-                    <div className="flex items-center space-x-2 truncate">
-                      <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span className="truncate font-medium">{uploadedFile.name}</span>
-                    </div>
-                    <span className="text-[10px] font-mono font-bold text-emerald-600 ml-2">
-                      {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </span>
+              {/* Wide Image Canvas Container */}
+              <div className="relative flex-1 min-h-[550px] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-gray-300 shadow-inner">
+                {isCropping && (
+                  <div className="absolute inset-0 bg-slate-900/80 z-20 flex flex-col items-center justify-center text-white backdrop-blur-sm">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-3 border-amber-400 border-t-transparent mb-2" />
+                    <p className="text-xs font-semibold text-amber-200">Auto-orienting & tightly cropping slip...</p>
                   </div>
                 )}
-              </div>
 
-              {/* Book Categorization & Options Card */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center space-x-2">
-                  <BookOpen className="w-4 h-4 text-amber-700" />
-                  <span>Categorization & Options</span>
-                </h3>
-
-                {/* Optional Book Number Input */}
-                <div>
-                  <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                    Book Number (పుస్తకం నెం.) <span className="text-gray-400 font-normal lowercase">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={singleBookNumber}
-                    onChange={(e) => setSingleBookNumber(e.target.value)}
-                    placeholder="e.g. 001 or BOOK-12"
-                    className="w-full text-xs font-mono border border-gray-300 rounded-xl px-3 py-2 text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                {selectedReceipt ? (
+                  <img
+                    src={selectedReceipt.previewUrl}
+                    alt={selectedReceipt.filename}
+                    style={{ transform: `rotate(${selectedReceipt.rotation}deg)` }}
+                    className="max-h-[580px] max-w-full w-auto object-contain rounded-lg shadow-2xl transition-transform duration-200"
                   />
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    Assigning a book folder groups this receipt automatically into categorized tabs.
-                  </p>
-                </div>
-
-                {/* Fast High-Speed Mode Switch */}
-                <div className="pt-2 border-t border-gray-100">
-                  <label className="flex items-start space-x-2 text-xs text-gray-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={skipTranscription}
-                      onChange={(e) => setSkipTranscription(e.target.checked)}
-                      className="rounded text-amber-600 focus:ring-amber-500 mt-0.5"
-                    />
-                    <div>
-                      <span className="font-bold text-gray-900">Fast Single-Pass Mode</span>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Processes under 10 seconds with 100% precision in Gothram master lookup and devotee extraction.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Action Button & Processing Card */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-                {isProcessing ? (
-                  <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-3 border-amber-600 border-t-transparent mb-2" />
-                    <p className="text-xs font-bold text-amber-900 font-mono tracking-wide">
-                      PROCESSING RECEIPT...
-                    </p>
-                    <p className="text-xs text-amber-700 mt-1 font-sans animate-pulse">
-                      {processingStage}
-                    </p>
-                    <div className="w-full bg-amber-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                      <div className="bg-amber-600 h-full rounded-full animate-indeterminate" />
-                    </div>
-                  </div>
                 ) : (
-                  <button
-                    onClick={handleStartOCR}
-                    disabled={!previewUrl}
-                    className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 disabled:opacity-40 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2 text-sm tracking-wide"
+                  /* Empty Queue Dropzone */
+                  <label
+                    htmlFor="wide-preview-dropzone-input"
+                    className="cursor-pointer flex flex-col items-center justify-center text-center p-8 max-w-md w-full border-2 border-dashed border-slate-700 hover:border-amber-400 rounded-2xl transition-all group"
                   >
-                    <Zap className="w-4 h-4 fill-amber-200" />
-                    <span>RUN OCR EXTRACTION & VERIFY</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                )}
-
-                <p className="text-[11px] text-gray-400 text-center mt-3">
-                  Clicking will run AI extraction and immediately load the full verification & review editor.
-                </p>
-              </div>
-
-              {/* Quick Info Box */}
-              <div className="bg-amber-50/60 rounded-xl border border-amber-200/70 p-4 text-[11px] text-amber-900 space-y-1.5">
-                <p className="font-bold flex items-center space-x-1.5 text-amber-950">
-                  <span>💡</span>
-                  <span>Tips for Best Accuracy</span>
-                </p>
-                <ul className="list-disc pl-4 space-y-1 text-amber-800">
-                  <li>Keep receipt flat with good, even lighting.</li>
-                  <li>Ensure the entire slip including devotee lines and gothram is visible.</li>
-                  <li>Receipt orientation is detected automatically.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── TAB 2: BULK / BATCH PROCESSING QUEUE ──────────── */}
-        {activeTab === 'batch' && (
-          <div className="space-y-6">
-            {/* Batch Controls Bar */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-                <h3 className="text-base font-bold text-gray-900 flex items-center space-x-2">
-                  <Layers className="w-5 h-5 text-amber-700" />
-                  <span>Bulk Receipt Processing Queue</span>
-                  <span className="text-xs font-semibold bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-full">
-                    {batchQueue.length} {batchQueue.length === 1 ? 'receipt' : 'receipts'}
-                  </span>
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Drag and drop multiple receipts or select files. Process all with one click and review results.
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-3">
-                <label className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1.5 border border-gray-300 transition-colors">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Add More Files</span>
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={handleFileInputChange}
-                    className="hidden"
-                  />
-                </label>
-                {batchQueue.length > 0 && (
-                  <button
-                    onClick={clearBatchQueue}
-                    disabled={isBatchProcessing}
-                    className="text-gray-400 hover:text-red-600 p-2 rounded-lg"
-                    title="Clear Queue"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-                <button
-                  onClick={handleOpenBatchModal}
-                  disabled={isBatchProcessing || batchQueue.length === 0}
-                  className="bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 disabled:opacity-50 text-white px-5 py-2 rounded-xl text-xs font-bold shadow flex items-center space-x-2"
-                >
-                  {isBatchProcessing ? (
-                    <>
-                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
-                      <span>Processing ({batchProgress.current}/{batchProgress.total})...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4 fill-amber-200" />
-                      <span>PROCESS ALL ({batchQueue.filter((i) => i.status !== 'SUCCESS').length})</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Progress Bar when batch running */}
-            {isBatchProcessing && (
-              <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
-                <div className="flex items-center justify-between text-xs font-bold text-amber-900 mb-1.5">
-                  <span>Batch OCR in progress: {batchProgress.current} of {batchProgress.total} completed</span>
-                  <span>{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
-                </div>
-                <div className="w-full bg-amber-200 h-2.5 rounded-full overflow-hidden">
-                  <div
-                    className="bg-amber-600 h-full transition-all duration-300"
-                    style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Batch Items List */}
-            {batchQueue.length === 0 ? (
-              <div className="bg-white rounded-2xl border-2 border-dashed border-gray-300 p-12 text-center">
-                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3 opacity-60" />
-                <h4 className="text-sm font-bold text-gray-700">No Receipts in Batch Queue</h4>
-                <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-                  Drag and drop multiple receipt images here, or click below to select photos from your computer.
-                </p>
-                <div className="mt-4 flex items-center justify-center space-x-3">
-                  <label className="cursor-pointer bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow inline-flex items-center space-x-2">
-                    <Upload className="w-4 h-4" />
-                    <span>Select Images from Computer</span>
+                    <div className="w-16 h-16 rounded-full bg-slate-800 group-hover:bg-amber-900/40 border border-slate-700 group-hover:border-amber-500/50 flex items-center justify-center mb-4 transition-all shadow-md">
+                      <Upload className="w-8 h-8 text-amber-400 group-hover:scale-110 transition-transform" />
+                    </div>
+                    <h4 className="text-base font-bold text-white mb-1">
+                      Upload Receipts to Get Started
+                    </h4>
+                    <p className="text-xs text-slate-400 max-w-xs mb-4">
+                      Drag & drop up to 50 receipts at once, or click to multi-select files.
+                    </p>
+                    <span className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md transition-colors flex items-center space-x-1.5">
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Select Receipts (Multi-Select)</span>
+                    </span>
                     <input
+                      id="wide-preview-dropzone-input"
                       type="file"
                       multiple
                       accept="image/*"
@@ -766,162 +718,292 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       className="hidden"
                     />
                   </label>
+                )}
+              </div>
+
+              {/* Bottom Action Footer for Selected Receipt */}
+              {selectedReceipt && (
+                <div className="mt-4 pt-3 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2 text-xs">
+                    {selectedReceipt.status === 'PENDING' && (
+                      <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-semibold flex items-center space-x-1 border border-slate-200">
+                        <span className="w-2 h-2 rounded-full bg-slate-400" />
+                        <span>Ready for OCR</span>
+                      </span>
+                    )}
+                    {selectedReceipt.status === 'PROCESSING' && (
+                      <span className="bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full font-semibold flex items-center space-x-1.5 border border-amber-300">
+                        <div className="inline-block animate-spin rounded-full h-3 w-3 border-2 border-amber-700 border-t-transparent" />
+                        <span>Running AI Extraction...</span>
+                      </span>
+                    )}
+                    {selectedReceipt.status === 'SUCCESS' && (
+                      <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold flex items-center space-x-1 border border-emerald-300">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>OCR Extracted • Ready for Review</span>
+                      </span>
+                    )}
+                    {selectedReceipt.status === 'ERROR' && (
+                      <span className="bg-red-100 text-red-800 px-2.5 py-1 rounded-full font-bold flex items-center space-x-1 border border-red-300">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                        <span>Extraction Failed</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Primary Action Button */}
+                  <div className="flex items-center space-x-2 w-full sm:w-auto">
+                    {selectedReceipt.status === 'SUCCESS' ? (
+                      <button
+                        onClick={() => handleOpenReview(selectedReceipt)}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 transition-all"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>REVIEW & VERIFY EXTRACTION →</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleRunOCRForReceipt(selectedReceipt, true)}
+                        disabled={isProcessingSingle || isBatchProcessing}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 transition-all"
+                      >
+                        <Zap className="w-4 h-4 fill-amber-200" />
+                        <span>
+                          {isProcessingSingle ? 'PROCESSING RECEIPT...' : 'RUN OCR ON THIS RECEIPT'}
+                        </span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ════════ RIGHT COLUMN: PERSISTENT QUEUE & BOOK MANAGER (4 COLS) ════════ */}
+          <div className="lg:col-span-4 flex flex-col space-y-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 flex flex-col min-h-[680px]">
+              {/* Queue Header & Filters */}
+              <div className="pb-3 border-b border-gray-100 mb-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5">
+                    <Layers className="w-4 h-4 text-amber-700" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-gray-800">
+                      Receipt Queue ({filteredReceipts.length})
+                    </h3>
+                  </div>
+
+                  {/* Clear Actions */}
+                  <div className="flex items-center space-x-2 text-[11px]">
+                    {stats.success > 0 && (
+                      <button
+                        onClick={handleClearCompleted}
+                        className="text-gray-500 hover:text-amber-800 font-semibold"
+                        title="Clear completed receipts from queue"
+                      >
+                        Clear Completed
+                      </button>
+                    )}
+                    {receipts.length > 0 && (
+                      <button
+                        onClick={handleClearAll}
+                        className="text-gray-400 hover:text-red-600"
+                        title="Clear all receipts"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Book Filter Chips */}
+                {distinctBooks.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">Book:</span>
+                    <button
+                      onClick={() => setSelectedBookFilter('ALL')}
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${
+                        selectedBookFilter === 'ALL'
+                          ? 'bg-amber-700 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      All ({receipts.length})
+                    </button>
+                    {distinctBooks.map((b) => {
+                      const count = receipts.filter((r) => r.bookNumber === b).length;
+                      return (
+                        <button
+                          key={b}
+                          onClick={() => setSelectedBookFilter(b)}
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${
+                            selectedBookFilter === b
+                              ? 'bg-amber-700 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          Book {b} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Status Filter Tabs */}
+                <div className="flex items-center justify-between bg-gray-100 p-0.5 rounded-lg text-[10px] font-semibold text-gray-600">
+                  <button
+                    onClick={() => setStatusFilter('ALL')}
+                    className={`flex-1 py-1 rounded text-center transition-all ${
+                      statusFilter === 'ALL' ? 'bg-white text-gray-900 shadow-sm font-bold' : ''
+                    }`}
+                  >
+                    All ({receipts.length})
+                  </button>
+                  <button
+                    onClick={() => setStatusFilter('PENDING')}
+                    className={`flex-1 py-1 rounded text-center transition-all ${
+                      statusFilter === 'PENDING' ? 'bg-white text-gray-900 shadow-sm font-bold' : ''
+                    }`}
+                  >
+                    Pending ({stats.pending})
+                  </button>
+                  <button
+                    onClick={() => setStatusFilter('SUCCESS')}
+                    className={`flex-1 py-1 rounded text-center transition-all ${
+                      statusFilter === 'SUCCESS' ? 'bg-white text-emerald-700 shadow-sm font-bold' : ''
+                    }`}
+                  >
+                    Ready ({stats.success})
+                  </button>
                 </div>
               </div>
-            ) : (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="divide-y divide-gray-100">
-                  {batchQueue.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/80 transition-colors"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <span className="text-xs font-mono font-bold text-gray-400 w-6">
-                          #{idx + 1}
-                        </span>
-                        <div className="w-16 h-12 bg-slate-900 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
+
+              {/* Scrollable Receipt Queue List */}
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[520px]">
+                {filteredReceipts.length === 0 ? (
+                  <div className="text-center py-12 px-4">
+                    <Layers className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-xs font-semibold text-gray-600">No receipts in this filter</p>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Drag & drop images or click "Add Receipts" to add up to 50 receipts per book.
+                    </p>
+                  </div>
+                ) : (
+                  filteredReceipts.map((item, idx) => {
+                    const isSelected = selectedReceipt?.id === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => setSelectedId(item.id)}
+                        className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center space-x-2.5 ${
+                          isSelected
+                            ? 'bg-amber-50/80 border-amber-400 ring-1 ring-amber-400 shadow-sm'
+                            : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {/* Thumbnail */}
+                        <div className="w-14 h-14 rounded-lg bg-slate-900 flex-shrink-0 overflow-hidden flex items-center justify-center border border-gray-200">
                           <img
                             src={item.previewUrl}
-                            alt={item.filename}
+                            alt=""
+                            style={{ transform: `rotate(${item.rotation}deg)` }}
                             className="w-full h-full object-cover"
                           />
                         </div>
-                        <div>
-                          <p className="text-xs font-bold text-gray-900 truncate max-w-xs sm:max-w-md">
-                            {item.filename}
-                          </p>
-                          <p className="text-[11px] text-gray-400">
-                            {(item.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
+
+                        {/* Metadata */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-gray-800 truncate">
+                              #{idx + 1}. {item.filename}
+                            </span>
+                            {/* Delete Button */}
+                            <button
+                              onClick={(e) => handleDeleteItem(item.id, e)}
+                              className="text-gray-400 hover:text-red-600 p-0.5 rounded"
+                              title="Delete photo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center space-x-2 mt-0.5 text-[10px] text-gray-500">
+                            {item.bookNumber && (
+                              <span className="font-mono bg-gray-100 text-gray-700 px-1.5 py-0.2 rounded font-semibold">
+                                B:{item.bookNumber}
+                              </span>
+                            )}
+                            <span>{(item.fileSize / 1024 / 1024).toFixed(1)} MB</span>
+                          </div>
+
+                          {/* Status Badge */}
+                          <div className="mt-1 flex items-center justify-between">
+                            {item.status === 'PENDING' && (
+                              <span className="text-[10px] text-gray-500 flex items-center space-x-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                <span>Pending</span>
+                              </span>
+                            )}
+                            {item.status === 'PROCESSING' && (
+                              <span className="text-[10px] text-amber-700 font-semibold flex items-center space-x-1 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                <span>OCR running...</span>
+                              </span>
+                            )}
+                            {item.status === 'SUCCESS' && (
+                              <span className="text-[10px] text-emerald-700 font-bold flex items-center space-x-1">
+                                <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Extracted</span>
+                              </span>
+                            )}
+                            {item.status === 'ERROR' && (
+                              <span className="text-[10px] text-red-600 font-bold flex items-center space-x-1">
+                                <AlertTriangle className="w-3 h-3 text-red-500" />
+                                <span>Error</span>
+                              </span>
+                            )}
+
+                            {item.status === 'SUCCESS' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenReview(item);
+                                }}
+                                className="text-[10px] text-amber-800 hover:text-amber-950 font-bold underline"
+                              >
+                                Review →
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-
-                      <div className="flex items-center space-x-3 justify-end">
-                        {item.status === 'PENDING' && (
-                          <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
-                            Pending
-                          </span>
-                        )}
-                        {item.status === 'PROCESSING' && (
-                          <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-                            <span className="inline-block animate-spin rounded-full h-3 w-3 border-2 border-amber-700 border-t-transparent" />
-                            <span>Processing...</span>
-                          </span>
-                        )}
-                        {item.status === 'SUCCESS' && (
-                          <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            <span>
-                              {item.result?.receipt_no ? `Receipt #${item.result.receipt_no}` : 'Extracted'}
-                            </span>
-                          </span>
-                        )}
-                        {item.status === 'ERROR' && (
-                          <span
-                            className="text-xs font-semibold text-red-700 bg-red-100 px-2.5 py-1 rounded-full truncate max-w-[200px]"
-                            title={item.error}
-                          >
-                            Failed
-                          </span>
-                        )}
-
-                        {item.status === 'SUCCESS' && (
-                          <button
-                            onClick={() => handleReviewBatchItem(item)}
-                            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1 shadow-sm"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>Review</span>
-                          </button>
-                        )}
-
-                        {!isBatchProcessing && (
-                          <button
-                            onClick={() => removeBatchItem(item.id)}
-                            className="text-gray-400 hover:text-red-600 p-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    );
+                  })
+                )}
               </div>
-            )}
-          </div>
-        )}
-      </div>
 
-      {/* ── BATCH BOOK NUMBER ASSIGNMENT MODAL ──────────────── */}
-      {showBookNumberModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-gray-200 animate-scale-up">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center space-x-2">
-                <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
-                  <BookOpen className="w-4 h-4" />
-                </div>
-                <h3 className="font-bold text-sm text-gray-900">
-                  Assign Book Number to Batch
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowBookNumberModal(false)}
-                className="text-gray-400 hover:text-gray-600 p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-500 mb-4">
-              Enter an optional Book Number to assign to all {batchQueue.filter((i) => i.status !== 'SUCCESS').length} receipts in this batch.
-            </p>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleStartBatchOCR(bulkBookNumber.trim() || undefined);
-              }}
-            >
-              <div className="mb-4">
-                <label className="block text-[11px] font-bold text-gray-700 uppercase mb-1">
-                  Book Number (Optional)
-                </label>
+              {/* Bottom Multi-Select Add Strip */}
+              <div className="pt-3 border-t border-gray-100 mt-2">
                 <input
-                  type="text"
-                  value={bulkBookNumber}
-                  onChange={(e) => setBulkBookNumber(e.target.value)}
-                  placeholder="e.g. 001 or BOOK-12"
-                  autoFocus
-                  className="w-full text-xs font-mono border border-gray-300 rounded-xl px-3 py-2 text-gray-800 focus:ring-2 focus:ring-amber-500"
+                  ref={addMoreInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFileInputChange}
+                  className="hidden"
                 />
-                <span className="text-[10px] text-gray-400 mt-1 block">
-                  Leave blank if receipts do not belong to a specific book.
-                </span>
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-gray-100">
                 <button
-                  type="button"
-                  onClick={() => setShowBookNumberModal(false)}
-                  className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 rounded-xl"
+                  onClick={() => addMoreInputRef.current?.click()}
+                  className="w-full py-2 bg-gray-50 hover:bg-amber-50 border border-dashed border-gray-300 hover:border-amber-400 rounded-xl text-xs font-semibold text-gray-700 hover:text-amber-900 flex items-center justify-center space-x-1.5 transition-colors"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs rounded-xl shadow flex items-center space-x-1"
-                >
-                  <Zap className="w-3.5 h-3.5 fill-amber-200" />
-                  <span>Start Processing Batch</span>
+                  <Plus className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Add More Receipts (Multi-Select)</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
