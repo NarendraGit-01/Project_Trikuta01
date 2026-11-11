@@ -4,6 +4,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ScanPage } from './pages/ScanPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ReceiptListPage } from './pages/ReceiptListPage';
+import { StagedUploadsPage } from './pages/StagedUploadsPage';
 import { PoojaListPage } from './pages/PoojaListPage';
 import { DispatchPage } from './pages/DispatchPage';
 import { GothramMasterPage } from './pages/GothramMasterPage';
@@ -126,6 +127,12 @@ export const App: React.FC = () => {
               activeModel={activeModel}
               onChangeModel={setActiveModel}
             />
+          </ErrorBoundary>
+        )}
+
+        {currentTab === 'staged' && (
+          <ErrorBoundary fallbackTitle="Staged Uploads Error" onReset={() => setCurrentTab('staged')}>
+            <StagedUploadsPage onProcessed={handleOCRComplete} />
           </ErrorBoundary>
         )}
 

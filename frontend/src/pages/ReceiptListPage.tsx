@@ -15,10 +15,24 @@ import {
   X,
   Check,
   RotateCcw,
-  BookOpen
+  BookOpen,
+  Trash2,
+  ArchiveRestore
 } from 'lucide-react';
 import { listReceipts, fetchBooksSummary, updateReceipt } from '../services/api';
 import { ReceiptListItem, BooksSummaryResponse, BookFolderItem } from '../types';
+
+const API_BASE = '/api/v1';
+
+async function archiveReceipt(id: number, reason = 'Deleted by user'): Promise<void> {
+  const res = await fetch(`${API_BASE}/receipts/${id}?reason=${encodeURIComponent(reason)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to archive receipt');
+}
+
+async function restoreReceipt(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/receipts/${id}/restore`, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to restore receipt');
+}
 
 interface ReceiptListPageProps {
   onSelectReceipt: (receiptId: number) => void;
@@ -32,6 +46,9 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivingId, setArchivingId] = useState<number | null>(null);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
 
   // Quick edit book number modal state
   const [editingReceipt, setEditingReceipt] = useState<{
@@ -50,6 +67,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
           q: searchQuery || undefined,
           status: statusFilter || undefined,
           book_number: activeFolder || undefined,
+          archived_only: showArchived,
           limit: 100,
         }),
         fetchBooksSummary().catch(() => null),
@@ -67,7 +85,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
 
   useEffect(() => {
     loadData(selectedFolder);
-  }, [selectedFolder, statusFilter]);
+  }, [selectedFolder, statusFilter, showArchived]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,11 +137,39 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
     }
   };
 
+  const handleArchive = async (r: ReceiptListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Archive receipt #${r.receipt_no}? It will be moved to the archive and can be restored later.`)) return;
+    setArchivingId(r.id);
+    try {
+      await archiveReceipt(r.id);
+      await loadData(selectedFolder);
+    } catch (err: any) {
+      alert(`Failed to archive: ${err.message || 'Unknown error'}`);
+    } finally {
+      setArchivingId(null);
+    }
+  };
+
+  const handleRestore = async (r: ReceiptListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRestoringId(r.id);
+    try {
+      await restoreReceipt(r.id);
+      await loadData(selectedFolder);
+    } catch (err: any) {
+      alert(`Failed to restore: ${err.message || 'Unknown error'}`);
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
   // Compute label for currently viewing folder
   const getSelectedFolderLabel = () => {
-    if (!selectedFolder) return 'All Receipts (అన్ని రసీదులు)';
-    if (selectedFolder === '__UNASSIGNED__') return 'Unassigned (పుస్తకం లేనివి)';
-    return `Book #${selectedFolder}`;
+    const archiveSuffix = showArchived ? ' — Archive' : '';
+    if (!selectedFolder) return `All Receipts (అన్ని రసీదులు)${archiveSuffix}`;
+    if (selectedFolder === '__UNASSIGNED__') return `Unassigned (పుస్తకం లేనివి)${archiveSuffix}`;
+    return `Book #${selectedFolder}${archiveSuffix}`;
   };
 
   return (
@@ -140,6 +186,23 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowArchived(a => !a)}
+            className={`px-3.5 py-2 font-bold text-xs rounded-xl shadow transition-colors flex items-center space-x-1.5 ${
+              showArchived
+                ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+            }`}
+            title={showArchived ? 'Back to active receipts' : 'View archived/deleted receipts'}
+          >
+            <FolderArchive className="w-3.5 h-3.5" />
+            <span>{showArchived ? '← Back to Active' : 'View Archive'}</span>
+            {!showArchived && (booksSummary as any)?.archived_count ? (
+              <span className="bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                {(booksSummary as any).archived_count}
+              </span>
+            ) : null}
+          </button>
           {selectedFolder && (
             <button
               onClick={() => handleExportExcel(selectedFolder)}
@@ -528,13 +591,38 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
                         {r.receipt_date || r.created_at?.slice(0, 10)}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => onSelectReceipt(r.id)}
-                          className="px-2.5 py-1 text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 inline-flex items-center space-x-1"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Review</span>
-                        </button>
+                        <div className="flex items-center space-x-1 justify-end">
+                          {!r.is_archived && (
+                            <>
+                              <button
+                                onClick={() => onSelectReceipt(r.id)}
+                                className="px-2.5 py-1 text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 inline-flex items-center space-x-1"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Review</span>
+                              </button>
+                              <button
+                                onClick={(e) => handleArchive(r, e)}
+                                disabled={archivingId === r.id}
+                                className="px-2 py-1 text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 inline-flex items-center space-x-1 disabled:opacity-50"
+                                title="Archive (soft delete) this receipt"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                          {r.is_archived && (
+                            <button
+                              onClick={(e) => handleRestore(r, e)}
+                              disabled={restoringId === r.id}
+                              className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 inline-flex items-center space-x-1 disabled:opacity-50"
+                              title="Restore this receipt from archive"
+                            >
+                              <ArchiveRestore className="w-3.5 h-3.5" />
+                              <span>Restore</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

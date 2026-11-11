@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, FileText, Flame, Package, BookOpen, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Camera, FileText, Flame, Package, BookOpen, Sparkles, CheckCircle2, Smartphone } from 'lucide-react';
 
 interface NavbarProps {
   currentTab: string;
@@ -10,6 +10,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, activeModel }) => {
   const tabs = [
     { id: 'scan', label: 'Scan & OCR', telugu: 'రసీదు స్కాన్', icon: Camera },
+    { id: 'staged', label: 'Staged Uploads', telugu: 'మొబైల్ అప్‌లోడ్లు', icon: Smartphone },
     { id: 'receipts', label: 'Receipts', telugu: 'రసీదుల జాబితా', icon: FileText },
     { id: 'pooja', label: 'Sankalpam', telugu: 'పూజా సంకల్పం', icon: Flame },
     { id: 'dispatch', label: 'Dispatch', telugu: 'ప్రసాదం పంపిణీ', icon: Package },
