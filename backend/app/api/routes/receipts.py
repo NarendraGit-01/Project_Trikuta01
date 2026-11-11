@@ -15,6 +15,7 @@ from backend.app.models.phone import ReceiptPhone
 from backend.app.models.receipt import Receipt
 from backend.app.models.user import User
 from backend.app.schemas.receipt import ReceiptCreate, ReceiptListItem, ReceiptOut, ReceiptUpdate
+from backend.app.storage import get_storage
 
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
@@ -141,6 +142,11 @@ def list_receipts(
         if first_person:
             p_name = f"{first_person.given_name_en or first_person.given_name_te or ''} {first_person.surname_en or first_person.surname_te or ''}".strip()
 
+        storage = get_storage()
+        img_url = None
+        if r.original_image_path:
+            img_url = r.original_image_path if r.original_image_path.startswith("http") else storage.get_url(r.original_image_path)
+
         items.append(
             ReceiptListItem(
                 id=r.id,
@@ -156,7 +162,7 @@ def list_receipts(
                 book_number=r.book_number,
                 is_archived=bool(r.is_archived),
                 archived_at=r.archived_at,
-                original_image_url=f"/api/v1/storage/{r.original_image_path}" if r.original_image_path else None,
+                original_image_url=img_url,
                 created_at=r.created_at,
             )
         )

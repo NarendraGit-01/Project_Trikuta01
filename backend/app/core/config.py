@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Storage
     STORAGE_DIR: str = "./data/storage"
 
+    # Supabase (Storage & Postgres)
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
+    SUPABASE_BUCKET: str = "receipts"
+
     # AI Configuration (Gemini)
     GOOGLE_API_KEY: str = ""
     GEMINI_PRIMARY_MODEL: str = "gemini-3.5-flash"

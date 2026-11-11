@@ -15,7 +15,7 @@ from backend.app.core.database import SessionLocal
 
 from backend.app.models.receipt import Receipt
 from backend.app.models.staged_image import StagedImage
-from backend.app.storage.local import LocalStorageBackend
+from backend.app.storage import get_storage
 from backend.pipeline.auto_crop import auto_orient_and_crop
 from backend.pipeline.image_loader import prepare_image, to_b64
 from backend.pipeline.image_quality import evaluate_image_quality
@@ -242,7 +242,7 @@ async def process_uploaded_receipt(
     # Save cropped slip to storage
     buf = io.BytesIO()
     cropped_pil.save(buf, format="JPEG", quality=95)
-    storage = LocalStorageBackend(base_dir=settings.STORAGE_DIR)
+    storage = get_storage()
     storage_path = storage.save_file(buf.getvalue(), prefix="uploads", extension=".jpg")
 
     model_to_use = model_name or settings.GEMINI_PRIMARY_MODEL
@@ -299,7 +299,7 @@ async def process_batch_receipts(
 
 
     batch_results = []
-    storage = LocalStorageBackend(base_dir=settings.STORAGE_DIR)
+    storage = get_storage()
     model_to_use = model_name or settings.GEMINI_PRIMARY_MODEL
 
     for upload in files:
@@ -371,7 +371,7 @@ async def stage_upload_receipts(
     available for processing on a desktop or laptop.
     """
     staged_items = []
-    storage = LocalStorageBackend(base_dir=settings.STORAGE_DIR)
+    storage = get_storage()
     db = SessionLocal()
 
     try:
@@ -389,7 +389,7 @@ async def stage_upload_receipts(
             staged = StagedImage(
                 filename=fname,
                 file_path=storage_path,
-                preview_url=f"/static/storage/{file_name_only}",
+                preview_url=storage.get_url(storage_path),
                 file_size=len(contents),
                 image_hash=img_hash,
                 book_number=book_number.strip() if book_number else None,
@@ -471,14 +471,18 @@ def process_staged_receipt(
         if not item:
             raise HTTPException(status_code=404, detail="Staged item not found")
 
-        file_full_path = Path(item.file_path)
-        if not file_full_path.exists():
-            file_full_path = Path(settings.STORAGE_DIR) / Path(item.file_path).name
-        if not file_full_path.exists():
-            raise HTTPException(status_code=404, detail="Staged image file missing from disk")
+        storage = get_storage()
+        contents = storage.get(item.file_path)
+        if contents is None:
+            file_full_path = Path(item.file_path)
+            if not file_full_path.exists():
+                file_full_path = Path(settings.STORAGE_DIR) / Path(item.file_path).name
+            if file_full_path.exists():
+                with open(file_full_path, "rb") as f:
+                    contents = f.read()
 
-        with open(file_full_path, "rb") as f:
-            contents = f.read()
+        if not contents:
+            raise HTTPException(status_code=404, detail="Staged image file could not be retrieved from storage")
 
         from backend.app.pipeline.translation import apply_translation
         from backend.pipeline.image_loader import prepare_image
@@ -556,14 +560,13 @@ async def auto_crop_image(file: UploadFile = File(...)):
     pil_img = prepare_image(contents)
     cropped, rot, box = auto_orient_and_crop(pil_img)
 
-    storage_dir = Path(settings.STORAGE_DIR)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    out_filename = f"crop_{int(time.time() * 1000)}.jpg"
-    out_path = storage_dir / out_filename
-    cropped.save(out_path, format="JPEG", quality=95)
+    buf = io.BytesIO()
+    cropped.save(buf, format="JPEG", quality=95)
+    storage = get_storage()
+    out_path = storage.save_file(buf.getvalue(), prefix="crop", extension=".jpg")
 
     return {
-        "url": f"/static/storage/{out_filename}",
+        "url": storage.get_url(out_path),
         "rotation_applied": rot,
         "crop_box": box,
         "width": cropped.width,
