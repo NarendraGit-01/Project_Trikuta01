@@ -2,17 +2,30 @@ from typing import Any, Dict, List, Optional, Tuple
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
 from PIL import Image
+from backend.app.core.config import settings
+from backend.pipeline.extraction import BILINGUAL_SYSTEM_PROMPT
 from backend.pipeline.image_loader import crop_from_box, to_b64
 from backend.pipeline.schemas import HW, Person
 from backend.pipeline.transcription import SYSTEM_PROMPT
 
-ZOOM_PROMPT = """This is a zoomed, high-resolution crop of the handwritten filled-in portion of a temple receipt.
+LEGACY_ZOOM_PROMPT = """This is a zoomed, high-resolution crop of the handwritten filled-in portion of a temple receipt.
 Read ONLY the handwritten ink markings. Do not read the printed Telugu form labels.
 - GOTHRAM: 1-3 plausible spellings of the handwritten gothram.
 - DEVOTEES: Each person's given name and surname. Copy letter by letter.
 - ADDRESS: Door no, street, mandal, village, district.
 - PINCODE: 6-digit PIN code.
 - PHONES: All handwritten mobile numbers (copy digit by digit)."""
+
+BILINGUAL_ZOOM_PROMPT = """This is a zoomed, high-resolution crop of the handwritten filled-in portion of a temple receipt.
+Read ONLY the handwritten ink markings and return BOTH Telugu (*_te) and natural Indian English (*_en).
+- GOTHRAM: 1-3 plausible spellings (`gothram_readings`), plus `gothram_te` and `gothram_en`.
+- FAMILY SURNAME (ఇంటిపేరు): Extract the shared family surname written before Person #1 into `family_surname_te` and `family_surname_en` (never put Rao/Sarma/Devi/Kumar/Lakshmi here).
+- DEVOTEES: Every devotee's `given_name`, `given_name_te`, `given_name_en`, and `surname`/`surname_te`/`surname_en`.
+- ADDRESS: Preserve ALL handwritten lines into `address`, `address_te`, and faithful Indian-English `address_en`.
+- PINCODE: 6-digit PIN code.
+- PHONES: All handwritten mobile numbers (copy digit by digit)."""
+
+ZOOM_PROMPT = BILINGUAL_ZOOM_PROMPT
 
 FIELD_GOTHRAM_PROMPT = """This crop shows ONLY the handwritten GOTHRAM field next to 'అభిషేకము చేయించుకొనువారి గోత్రము'.
 Read the handwritten letters/characters meticulously.
@@ -30,13 +43,17 @@ def run_zoom_reread(
     usage_tracker: Any
 ) -> Tuple[HW, Dict[str, Any]]:
     """Pass 3: Re-read the zoomed handwriting crop."""
+    use_bilingual = getattr(settings, "USE_BILINGUAL_LLM_EXTRACTION", True)
+    sys_prompt = BILINGUAL_SYSTEM_PROMPT if use_bilingual else SYSTEM_PROMPT
+    zoom_prompt = BILINGUAL_ZOOM_PROMPT if use_bilingual else LEGACY_ZOOM_PROMPT
+
     cb = UsageMetadataCallbackHandler()
     crop_b64 = to_b64(crop_img)
 
     messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
+        SystemMessage(content=sys_prompt),
         HumanMessage(content=[
-            {"type": "text", "text": ZOOM_PROMPT},
+            {"type": "text", "text": zoom_prompt},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{crop_b64}"}}
         ])
     ]

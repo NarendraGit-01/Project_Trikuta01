@@ -144,3 +144,90 @@ def test_consensus_and_confidence():
     assert confidences["gothram"].status == "GREEN"
     assert confidences["phones"].status == "GREEN"
     assert len(needs_check) == 0
+
+
+def test_bilingual_llm_consensus_preservation():
+    r2 = ReceiptExtraction(
+        receipt_no="7122",
+        date="11/11/2025",
+        abhishekam_from="11/11/25",
+        abhishekam_to="10/12/25",
+        amount_rupees="1116",
+        gothram_readings=["కాశ్యప"],
+        gothram_te="కాశ్యప",
+        gothram_en="KASHYAPA",
+        family_surname_te="యడ్ల",
+        family_surname_en="Yadla",
+        people=[
+            Person(
+                given_name="వెంకట రావు",
+                given_name_te="వెంకట రావు",
+                given_name_en="Venkata Rao",
+                surname="యడ్ల",
+                surname_te="యడ్ల",
+                surname_en="Yadla",
+            ),
+            Person(
+                given_name="వరలక్ష్మి",
+                given_name_te="వరలక్ష్మి",
+                given_name_en="Varalakshmi",
+            ),
+        ],
+        address="అంగర (గుడపరురిగూడెము) మెయిన్ రోడ్డు",
+        address_te="అంగర (గుడపరురిగూడెము) మెయిన్ రోడ్డు",
+        address_en="Angara (Gudaparru Gudem), Main Road",
+        pincode="533307",
+        phones=["9876543210"],
+    )
+    g_pick = GothramPick(
+        as_written="కాశ్యప",
+        final="KASHYAPA",
+        matched_in_list=True,
+        list_match="KASHYAPA",
+        other_possible_list_matches=[],
+        confidence="high",
+        reason="Master list match",
+    )
+
+    final_data, _, _ = resolve_consensus(r2=r2, r3=None, gothram_pick=g_pick)
+    assert final_data["family_surname_en"] == "Yadla"
+    assert final_data["family_surname_te"] == "యడ్ల"
+    assert final_data["people"][0].given_name_en == "Venkata Rao"
+    assert final_data["people"][1].surname_en == "Yadla"
+    assert final_data["people"][1].surname_te == "యడ్ల"
+    assert final_data["address_en"] == "Angara (Gudaparru Gudem), Main Road"
+    assert final_data["address_te"] == "అంగర (గుడపరురిగూడెము) మెయిన్ రోడ్డు"
+    assert final_data["gothram_te"] == "కాశ్యప"
+
+
+def test_bilingual_rollback_flag():
+    from backend.app.core.config import settings
+    orig = settings.USE_BILINGUAL_LLM_EXTRACTION
+    try:
+        settings.USE_BILINGUAL_LLM_EXTRACTION = False
+        r2 = ReceiptExtraction(
+            receipt_no="7123",
+            date="11/11/2025",
+            abhishekam_from="11/11/25",
+            abhishekam_to="10/12/25",
+            gothram_readings=["కాశ్యప"],
+            people=[Person(given_name="వెంకటరమణ", surname="యడ్ల")],
+            address="అంగర మెయిన్ రోడ్డు",
+            address_en="SHOULD_NOT_BE_USED_IN_LEGACY",
+            pincode="533307",
+            phones=["9876543210"],
+        )
+        g_pick = GothramPick(
+            as_written="కాశ్యప",
+            final="KASHYAPA",
+            matched_in_list=True,
+            list_match="KASHYAPA",
+            other_possible_list_matches=[],
+            confidence="high",
+            reason="Match",
+        )
+        final_data, _, _ = resolve_consensus(r2=r2, r3=None, gothram_pick=g_pick)
+        assert final_data["address_en"] != "SHOULD_NOT_BE_USED_IN_LEGACY"
+        assert final_data["family_surname_te"] == "యడ్ల"
+    finally:
+        settings.USE_BILINGUAL_LLM_EXTRACTION = orig

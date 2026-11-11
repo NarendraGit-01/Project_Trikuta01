@@ -58,15 +58,24 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       ? result.gothram_final
       : result.gothram_final?.name_en || result.gothram_as_written || '';
 
+  const providedGothramTe =
+    result.gothram_te ||
+    (typeof result.gothram_final === 'object' ? result.gothram_final?.name_te : '') ||
+    (isTeluguScript(result.gothram_as_written || '') ? result.gothram_as_written : '') ||
+    '';
+
   let initGothramEn = '';
   let initGothramTe = '';
 
   if (isTeluguScript(rawGothram)) {
-    initGothramTe = rawGothram;
+    initGothramTe = providedGothramTe || rawGothram;
     initGothramEn = transliterateTeluguToEnglish(rawGothram).toUpperCase();
   } else if (rawGothram) {
     initGothramEn = rawGothram.toUpperCase();
-    initGothramTe = transliterateToTelugu(rawGothram);
+    initGothramTe = providedGothramTe || transliterateToTelugu(rawGothram);
+  } else if (providedGothramTe) {
+    initGothramTe = providedGothramTe;
+    initGothramEn = transliterateTeluguToEnglish(providedGothramTe).toUpperCase();
   }
 
   const [gothramEn, setGothramEn] = useState(initGothramEn);
@@ -89,7 +98,22 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   /* ── 3. SHARED FAMILY SURNAME (Bidirectional Auto-Fill) ── */
   const rawPeople = Array.isArray(result.people) ? result.people : [];
 
-  // Find the family surname from the extracted devotees
+  // Prefer explicit bilingual surname from backend/LLM, otherwise inspect first person
+  let initSurnameEn = (result.family_surname_en || '').trim();
+  let initSurnameTe = (result.family_surname_te || '').trim();
+
+  if (!initSurnameEn || !initSurnameTe) {
+    for (const p of rawPeople) {
+      if (!initSurnameEn && p.surname_en && !isTeluguScript(p.surname_en)) {
+        initSurnameEn = p.surname_en.trim();
+      }
+      if (!initSurnameTe && p.surname_te && isTeluguScript(p.surname_te)) {
+        initSurnameTe = p.surname_te.trim();
+      }
+      if (initSurnameEn && initSurnameTe) break;
+    }
+  }
+
   let rawSurname = '';
   for (const p of rawPeople) {
     const s = (p.surname || p.surname_en || p.surname_te || '').trim();
@@ -99,10 +123,14 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     }
   }
 
-  let initSurnameEn = '';
-  let initSurnameTe = '';
-
-  if (isTeluguScript(rawSurname)) {
+  if (initSurnameEn && initSurnameTe) {
+    initSurnameEn = initSurnameEn.toUpperCase();
+  } else if (initSurnameTe && !initSurnameEn) {
+    initSurnameEn = transliterateTeluguToEnglish(initSurnameTe).toUpperCase();
+  } else if (initSurnameEn && !initSurnameTe) {
+    initSurnameEn = initSurnameEn.toUpperCase();
+    initSurnameTe = transliterateToTelugu(initSurnameEn);
+  } else if (isTeluguScript(rawSurname)) {
     initSurnameTe = rawSurname;
     initSurnameEn = transliterateTeluguToEnglish(rawSurname).toUpperCase();
   } else if (rawSurname) {
@@ -140,10 +168,14 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           // If pass 2 or pass 3 split a full name like 'వరలక్ష్మి (ప్రసన్న)' across surname and given_name,
           // recombine them so no name part is omitted
           let given = (p.given_name || p.given_name_en || p.given_name_te || '').trim();
-          const straySurname = (p.surname || p.surname_en || '').trim();
+          const straySurname = (p.surname || p.surname_en || p.surname_te || '').trim();
+          const matchesFamilySurname =
+            straySurname.toLowerCase() === rawSurname.toLowerCase() ||
+            straySurname.toLowerCase() === initSurnameTe.toLowerCase() ||
+            straySurname.toLowerCase() === initSurnameEn.toLowerCase();
 
           // If this person has a surname that differs from the family surname, it is part of their given name!
-          if (idx > 0 && straySurname && straySurname !== rawSurname) {
+          if (idx > 0 && straySurname && !matchesFamilySurname) {
             given = `${straySurname} ${given}`.trim();
           }
 

@@ -3,12 +3,12 @@ from pydantic import BaseModel, Field
 
 
 class Person(BaseModel):
-    given_name: str = Field(description="First/given name exactly as written, e.g. Mahalakshmi")
-    surname: str = Field(description="Surname/intiperu exactly as written, letter by letter. Do not correct it.")
-    given_name_en: Optional[str] = None
-    given_name_te: Optional[str] = None
-    surname_en: Optional[str] = None
-    surname_te: Optional[str] = None
+    given_name: str = Field(default="", description="First/given name exactly as written, e.g. Mahalakshmi")
+    surname: str = Field(default="", description="Surname/intiperu exactly as written, letter by letter. Do not correct it.")
+    given_name_en: Optional[str] = Field(None, description="Devotee given name in clean Indian English (e.g. Pattabhi Ramayya, Venkata Rao).")
+    given_name_te: Optional[str] = Field(None, description="Devotee given name in Telugu script (e.g. పట్టాభి రామయ్య, వెంకట రావు).")
+    surname_en: Optional[str] = Field(None, description="Devotee family surname/intiperu in clean English (e.g. Yadla, Ravuri).")
+    surname_te: Optional[str] = Field(None, description="Devotee family surname/intiperu in Telugu script (e.g. యడ్ల, రావురి).")
 
 
 class FieldBoundingBoxes(BaseModel):
@@ -39,11 +39,29 @@ class HW(BaseModel):
         default_factory=list,
         description="1-3 plausible spellings of the handwritten GOTHRAM, best first."
     )
+    gothram_te: Optional[str] = Field(None, description="Handwritten gothram in Telugu script (e.g. కాశ్యప, పైడిపల్లి).")
+    gothram_en: Optional[str] = Field(None, description="Handwritten gothram in English letters (e.g. KASHYAPA, PAIDIPALLI).")
+    family_surname_te: Optional[str] = Field(
+        None,
+        description="Shared family surname (ఇంటిపేరు / intiperu) in Telugu script written once before the first devotee's name. Never put Rao/Sarma/Devi/Kumar/Lakshmi here."
+    )
+    family_surname_en: Optional[str] = Field(
+        None,
+        description="Shared family surname (intiperu) in natural Indian English (e.g. Yadla, Ravuri, Kotinandini)."
+    )
     people: List[Person] = Field(
         default_factory=list,
-        description="Every devotee person listed, preserving given name and surname separately."
+        description="Every devotee person listed, preserving given name and surname separately in both Telugu and English."
     )
     address: Optional[str] = Field(None, description="Handwritten address exactly as written.")
+    address_te: Optional[str] = Field(
+        None,
+        description="Complete postal address in Telugu script retaining every door number, street, hamlet, landmark, village, mandal, and district written on the slip."
+    )
+    address_en: Optional[str] = Field(
+        None,
+        description="Complete postal address faithfully translated/transliterated into clean Indian English (e.g. D.No, Main Road, hamlet in parentheses, Village, Mandal, Dist), preserving ALL handwritten details."
+    )
     pincode: Optional[str] = Field(None, description="6-digit PIN code if present.")
     phones: List[str] = Field(
         default_factory=list,
@@ -115,10 +133,13 @@ class PipelineResult(BaseModel):
     amount_rupees: Optional[str] = None
 
     gothram_final: Optional[str] = None
+    gothram_te: Optional[str] = None
     gothram_as_written: Optional[str] = None
     gothram_in_reference: bool = False
     gothram_alternatives: List[str] = Field(default_factory=list)
 
+    family_surname_en: Optional[str] = None
+    family_surname_te: Optional[str] = None
     people: List[Person] = Field(default_factory=list)
     address: Optional[str] = None
     address_en: Optional[str] = None

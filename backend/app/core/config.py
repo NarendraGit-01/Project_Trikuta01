@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     GEMINI_PRIMARY_MODEL: str = "gemini-3.5-flash-lite"
     GEMINI_FALLBACK_MODEL: str = "gemini-3.5-flash"
     GEMINI_ROUTING_MODEL: str = "gemini-3.5-flash-lite"
+    USE_BILINGUAL_LLM_EXTRACTION: bool = True
 
     # Temple Config
     TEMPLE_NAME_TE: str = "శ్రీ త్రికోటేశ్వర స్వామి వారి దేవస్థానము"

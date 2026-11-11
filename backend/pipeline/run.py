@@ -174,14 +174,26 @@ def process_receipt(
             pass
 
     # Pass 5: Instant Master List Gothram Resolution (RapidFuzz - 1ms, zero latency)
+    extra_g = [g for g in (
+        getattr(r3, "gothram_te", None) if r3 else None,
+        getattr(r3, "gothram_en", None) if r3 else None,
+        getattr(r2, "gothram_te", None),
+        getattr(r2, "gothram_en", None),
+    ) if g]
     all_g_readings = list(dict.fromkeys([
         *field_gothram_readings,
         *(r3.gothram_readings if r3 else []),
-        *(r2.gothram_readings or [])
+        *(r2.gothram_readings or []),
+        *extra_g,
     ]))
     cands = resolver.get_candidates(all_g_readings, top_k=30)
     best_cand_score = cands[0][1] if cands else 0.0
-    raw_reading = all_g_readings[0] if all_g_readings else (r2.gothram_as_written or "")
+    raw_reading = (
+        getattr(r2, "gothram_te", None)
+        or (all_g_readings[0] if all_g_readings else "")
+        or getattr(r2, "gothram_as_written", None)
+        or ""
+    )
 
     if cands and best_cand_score >= 80.0:
         top_name = cands[0][0]
@@ -240,9 +252,12 @@ def process_receipt(
         abhishekam_to=final_data["abhishekam_to"],
         amount_rupees=final_data["amount_rupees"],
         gothram_final=final_data["gothram_final"],
+        gothram_te=final_data.get("gothram_te"),
         gothram_as_written=final_data["gothram_as_written"],
         gothram_in_reference=final_data["gothram_in_reference"],
         gothram_alternatives=final_data["gothram_alternatives"],
+        family_surname_en=final_data.get("family_surname_en"),
+        family_surname_te=final_data.get("family_surname_te"),
         people=final_data["people"],
         address=final_data["address"],
         address_en=final_data.get("address_en"),

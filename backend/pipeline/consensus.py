@@ -169,11 +169,15 @@ def resolve_consensus(
             field_name="pincode", status="AMBER", score=0.5, reason="Pincode blank or unverified"
         )
 
-    # 7. DEVOTEES & SURNAMES (with Telugu Name Lexicon Canonicalization)
+    # 7. DEVOTEES & SHARED FAMILY SURNAME
+    from backend.app.core.config import settings
     from backend.pipeline.address_resolver import (
         resolve_canonical_telugu_name,
         standardize_andhra_telangana_address,
     )
+    from backend.pipeline.transliterate import is_telugu, transliterate_en_to_te
+
+    use_bilingual = getattr(settings, "USE_BILINGUAL_LLM_EXTRACTION", True)
 
     people_r2 = r2.people or []
     people_r3 = r3.people if r3 else []
@@ -184,17 +188,62 @@ def resolve_consensus(
     else:
         raw_chosen_people = people_r3 if people_r3 else people_r2
 
+    # Shared family surname (intiperu) extracted at receipt level or from first person
+    fam_surname_te = ((r3.family_surname_te if r3 else None) or r2.family_surname_te or "").strip()
+    fam_surname_en = ((r3.family_surname_en if r3 else None) or r2.family_surname_en or "").strip()
+
+    if use_bilingual and (fam_surname_te or fam_surname_en):
+        if fam_surname_te and (not fam_surname_en or is_telugu(fam_surname_en)):
+            fam_surname_en, fam_surname_te = resolve_canonical_telugu_name(fam_surname_te)
+        elif fam_surname_en and (not fam_surname_te or not is_telugu(fam_surname_te)):
+            fam_surname_en, fam_surname_te = resolve_canonical_telugu_name(fam_surname_en)
+    else:
+        fam_surname_te = ""
+        fam_surname_en = ""
+
     chosen_people: List[Person] = []
     for p in raw_chosen_people:
         p_obj = p if isinstance(p, Person) else Person(**p)
-        if p_obj.given_name:
-            c_en, c_te = resolve_canonical_telugu_name(p_obj.given_name)
-            p_obj.given_name_en = c_en
-            p_obj.given_name_te = c_te
-        if p_obj.surname:
-            s_en, s_te = resolve_canonical_telugu_name(p_obj.surname)
-            p_obj.surname_en = s_en
+
+        # Resolve given name (prefer LLM bilingual pair if valid scripts)
+        g_te = (p_obj.given_name_te or "").strip()
+        g_en = (p_obj.given_name_en or "").strip()
+        if use_bilingual and g_te and g_en and is_telugu(g_te) and not is_telugu(g_en):
+            p_obj.given_name_te = g_te
+            p_obj.given_name_en = g_en
+            if not p_obj.given_name:
+                p_obj.given_name = g_te
+        elif p_obj.given_name or g_te or g_en:
+            raw_g = p_obj.given_name or g_te or g_en
+            c_en, c_te = resolve_canonical_telugu_name(raw_g)
+            p_obj.given_name_en = g_en if (use_bilingual and g_en and not is_telugu(g_en)) else c_en
+            p_obj.given_name_te = g_te if (use_bilingual and g_te and is_telugu(g_te)) else c_te
+            if not p_obj.given_name:
+                p_obj.given_name = raw_g
+
+        # Resolve surname (prefer per-person bilingual pair -> raw surname -> shared family surname)
+        s_te = (p_obj.surname_te or "").strip()
+        s_en = (p_obj.surname_en or "").strip()
+        if use_bilingual and s_te and s_en and is_telugu(s_te) and not is_telugu(s_en):
             p_obj.surname_te = s_te
+            p_obj.surname_en = s_en
+        elif p_obj.surname or s_te or s_en:
+            raw_s = p_obj.surname or s_te or s_en
+            c_en, c_te = resolve_canonical_telugu_name(raw_s)
+            p_obj.surname_en = s_en if (use_bilingual and s_en and not is_telugu(s_en)) else c_en
+            p_obj.surname_te = s_te if (use_bilingual and s_te and is_telugu(s_te)) else c_te
+        elif fam_surname_en or fam_surname_te:
+            p_obj.surname_en = fam_surname_en
+            p_obj.surname_te = fam_surname_te
+
+        if not p_obj.surname:
+            p_obj.surname = p_obj.surname_te or p_obj.surname_en or ""
+
+        if not fam_surname_en and p_obj.surname_en:
+            fam_surname_en = p_obj.surname_en
+        if not fam_surname_te and p_obj.surname_te:
+            fam_surname_te = p_obj.surname_te
+
         chosen_people.append(p_obj)
 
     if people_r2 and people_r3:
@@ -225,15 +274,32 @@ def resolve_consensus(
     # 8. ADDRESS & AP/TS GEOLOCATION RESOLUTION
     addr_r2 = r2.address or ""
     addr_r3 = (r3.address or "") if r3 else ""
-    chosen_addr = addr_r3 or addr_r2
+    llm_addr_te = ((r3.address_te if r3 else None) or r2.address_te or "").strip()
+    llm_addr_en = ((r3.address_en if r3 else None) or r2.address_en or "").strip()
+    chosen_addr = addr_r3 or addr_r2 or llm_addr_te or llm_addr_en
 
     clean_addr_en, clean_addr_te, resolved_pin, geo_meta = standardize_andhra_telangana_address(
-        chosen_addr, chosen_pin
+        llm_addr_te or chosen_addr, chosen_pin
     )
     if resolved_pin and not chosen_pin:
         chosen_pin = resolved_pin
 
-    if not chosen_addr and not clean_addr_te:
+    # When Gemini returned natural bilingual addresses directly, prefer them over Python transliteration
+    if use_bilingual and llm_addr_en and not is_telugu(llm_addr_en):
+        clean_addr_en = llm_addr_en
+    if use_bilingual and llm_addr_te and is_telugu(llm_addr_te):
+        clean_addr_te = llm_addr_te
+
+    # Bilingual gothram Telugu preservation
+    llm_gothram_te = ((r3.gothram_te if r3 else None) or r2.gothram_te or "").strip()
+    if use_bilingual and llm_gothram_te and is_telugu(llm_gothram_te):
+        gothram_te = llm_gothram_te
+    elif g_written and is_telugu(g_written):
+        gothram_te = g_written
+    else:
+        gothram_te = transliterate_en_to_te(g_final) if g_final else ""
+
+    if not chosen_addr and not clean_addr_te and not clean_addr_en:
         needs_check.append("Address is missing.")
         field_confidences["address"] = FieldConfidence(
             field_name="address", status="RED", score=0.0, reason="Missing address"
@@ -257,9 +323,12 @@ def resolve_consensus(
         "abhishekam_to": r2.abhishekam_to,
         "amount_rupees": r2.amount_rupees,
         "gothram_final": g_final,
+        "gothram_te": gothram_te,
         "gothram_as_written": g_written,
         "gothram_in_reference": g_matched,
         "gothram_alternatives": gothram_pick.other_possible_list_matches or [],
+        "family_surname_en": fam_surname_en or None,
+        "family_surname_te": fam_surname_te or None,
         "people": chosen_people,
         "address": clean_addr_te or clean_addr_en or chosen_addr,
         "address_en": clean_addr_en,

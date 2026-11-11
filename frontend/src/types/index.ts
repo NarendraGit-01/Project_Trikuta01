@@ -129,9 +129,12 @@ export interface PipelineResult {
   abhishekam_to?: string;
   amount_rupees?: string;
   gothram_final?: any;
+  gothram_te?: string;
   gothram_as_written?: string;
   gothram_in_reference?: boolean;
   gothram_alternatives?: any[];
+  family_surname_en?: string;
+  family_surname_te?: string;
   people?: any[];
   address?: any;
   address_en?: string;

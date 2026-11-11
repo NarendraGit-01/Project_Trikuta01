@@ -101,7 +101,7 @@ def resolve_pincode_online_or_offline(pin: str) -> Optional[Dict[str, str]]:
     try:
         url = f"https://api.postalpincode.in/pincode/{clean_pin}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-        with urllib.request.urlopen(req, timeout=3) as res:
+        with urllib.request.urlopen(req, timeout=1.5) as res:
             data = json.loads(res.read().decode("utf-8"))
             if data and data[0].get("Status") == "Success":
                 po_list = data[0].get("PostOffice", [])
