@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Flame, Printer, Filter, BookOpen } from 'lucide-react';
-import { listReceipts, getReceipt } from '../services/api';
+import { listDetailedReceipts } from '../services/api';
 import { Receipt } from '../types';
 
 export const PoojaListPage: React.FC = () => {
@@ -10,13 +10,9 @@ export const PoojaListPage: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    listReceipts({ status: 'CONFIRMED', limit: 100 })
-      .then(async (items) => {
-        // Fetch full details for each
-        const fulls = await Promise.all(
-          items.map((it) => getReceipt(it.id).catch(() => null))
-        );
-        setReceipts(fulls.filter((f): f is Receipt => f !== null));
+    listDetailedReceipts({ status: 'CONFIRMED', limit: 100 })
+      .then((fulls) => {
+        setReceipts(fulls);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));

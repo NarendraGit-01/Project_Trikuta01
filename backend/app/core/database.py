@@ -28,18 +28,24 @@ _AWS_IPV6_PREFIX_HINTS = [
 
 
 def _detect_aws_region_from_ipv6(ipv6_str: str) -> Optional[str]:
-    """Infer AWS region for an IPv6 address via AWS ip-ranges.json or prefix hints."""
+    """Infer AWS region for an IPv6 address via fast prefix hints first, then AWS ip-ranges.json."""
     try:
         ip_obj = ipaddress.ip_address(ipv6_str)
     except ValueError:
         return None
 
+    # 1. Instant 0ms prefix hint check
+    for cidr, region in _AWS_IPV6_PREFIX_HINTS:
+        if ip_obj in ipaddress.ip_network(cidr):
+            return region
+
+    # 2. Fallback to AWS ip-ranges.json for uncommon regions
     try:
         req = urllib.request.Request(
             "https://ip-ranges.amazonaws.com/ip-ranges.json",
             headers={"User-Agent": "TrikutaOCR/1.0"},
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         best_prefix_len = -1
         best_region = None
@@ -52,10 +58,6 @@ def _detect_aws_region_from_ipv6(ipv6_str: str) -> Optional[str]:
             return best_region
     except Exception:
         pass
-
-    for cidr, region in _AWS_IPV6_PREFIX_HINTS:
-        if ip_obj in ipaddress.ip_network(cidr):
-            return region
     return None
 
 
@@ -87,17 +89,18 @@ def _resolve_supabase_ipv4_url(url_str: str, engine_kwargs: dict):
     except socket.gaierror:
         pass
 
-    # 2. Check if direct IPv6 actually connects in this environment
+    # 2. Check if direct IPv6 actually connects in this environment (skip on Vercel which is IPv4-only)
     ipv6_addr = None
     try:
         ipv6_info = socket.getaddrinfo(u.host, port, socket.AF_INET6)
         if ipv6_info:
             af, socktype, proto, _, sockaddr = ipv6_info[0]
             ipv6_addr = sockaddr[0]
-            with socket.socket(af, socktype, proto) as s:
-                s.settimeout(2)
-                s.connect(sockaddr)
-            return url_str  # IPv6 works directly
+            if not os.getenv("VERCEL"):
+                with socket.socket(af, socktype, proto) as s:
+                    s.settimeout(1.5)
+                    s.connect(sockaddr)
+                return url_str  # IPv6 works directly
     except OSError:
         pass
 
@@ -116,34 +119,43 @@ def _resolve_supabase_ipv4_url(url_str: str, engine_kwargs: dict):
 
     probe_kwargs = dict(engine_kwargs)
     probe_connect_args = dict(probe_kwargs.get("connect_args") or {})
-    probe_connect_args["connect_timeout"] = 4
+    probe_connect_args["connect_timeout"] = 3
     probe_kwargs["connect_args"] = probe_connect_args
 
-    for region in regions:
-        for shard in ("aws-0", "aws-1"):
-            pooler_host = f"{shard}-{region}.pooler.supabase.com"
-            try:
-                socket.getaddrinfo(pooler_host, 5432, socket.AF_INET)
-            except socket.gaierror:
-                continue
+    from concurrent.futures import ThreadPoolExecutor
 
-            for pooler_port in (5432, 6543):
-                candidate = u.set(host=pooler_host, port=pooler_port, username=pooler_user)
-                temp_eng = None
-                try:
-                    temp_eng = create_engine(candidate, **probe_kwargs)
-                    with temp_eng.connect() as conn:
-                        conn.execute(text("SELECT 1"))
-                    print(f"Notice: Switched IPv6-only Supabase host to IPv4 pooler {pooler_host}:{pooler_port}")
-                    return candidate
-                except Exception as exc:
-                    err_msg = str(exc).lower()
-                    if "password authentication failed" in err_msg:
-                        # Found the exact shard & host; let SQLAlchemy surface the auth error directly
-                        return candidate
-                finally:
-                    if temp_eng is not None:
-                        temp_eng.dispose()
+    def _probe_shard(pooler_host: str, pooler_port: int):
+        try:
+            socket.getaddrinfo(pooler_host, pooler_port, socket.AF_INET)
+        except socket.gaierror:
+            return None
+        candidate = u.set(host=pooler_host, port=pooler_port, username=pooler_user)
+        temp_eng = None
+        try:
+            temp_eng = create_engine(candidate, **probe_kwargs)
+            with temp_eng.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return ("ok", candidate, pooler_host, pooler_port)
+        except Exception as exc:
+            if "password authentication failed" in str(exc).lower():
+                return ("auth_err", candidate, pooler_host, pooler_port)
+            return None
+        finally:
+            if temp_eng is not None:
+                temp_eng.dispose()
+
+    for region in regions:
+        for pooler_port in (5432, 6543):
+            hosts = [f"aws-0-{region}.pooler.supabase.com", f"aws-1-{region}.pooler.supabase.com"]
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(lambda h: _probe_shard(h, pooler_port), hosts))
+            for res in results:
+                if res and res[0] == "ok":
+                    print(f"Notice: Switched IPv6-only Supabase host to IPv4 pooler {res[2]}:{res[3]}")
+                    return res[1]
+            for res in results:
+                if res and res[0] == "auth_err":
+                    return res[1]
 
     return url_str
 

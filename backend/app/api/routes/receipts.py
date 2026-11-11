@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from backend.app.auth.deps import get_current_user, get_optional_current_user
 from backend.app.core.config import settings
 from backend.app.core.database import Base, engine, get_db
@@ -133,8 +133,15 @@ def list_receipts(
 
     actual_skip = skip if isinstance(skip, int) else 0
     actual_limit = limit if isinstance(limit, int) else 25
-    receipts = query.order_by(Receipt.id.desc()).offset(actual_skip).limit(actual_limit).all()
+    receipts = (
+        query.options(selectinload(Receipt.persons))
+        .order_by(Receipt.id.desc())
+        .offset(actual_skip)
+        .limit(actual_limit)
+        .all()
+    )
 
+    storage = get_storage()
     items = []
     for r in receipts:
         first_person = r.persons[0] if r.persons else None
@@ -142,7 +149,6 @@ def list_receipts(
         if first_person:
             p_name = f"{first_person.given_name_en or first_person.given_name_te or ''} {first_person.surname_en or first_person.surname_te or ''}".strip()
 
-        storage = get_storage()
         img_url = None
         if r.original_image_path:
             img_url = r.original_image_path if r.original_image_path.startswith("http") else storage.get_url(r.original_image_path)
@@ -169,9 +175,48 @@ def list_receipts(
     return items
 
 
+@router.get("/detailed", response_model=List[ReceiptOut])
+def list_detailed_receipts(
+    status_filter: Optional[str] = Query(None, description="PENDING_VERIFICATION, CONFIRMED, INCOMPLETE"),
+    book_number: Optional[str] = Query(None, description="Filter by book number"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db)
+):
+    """Fetch full receipt details (persons, phones, dispatch) in one batched query for Sankalpam & Dispatch views."""
+    query = db.query(Receipt).filter(or_(Receipt.is_archived == False, Receipt.is_archived == None))
+    if isinstance(status_filter, str) and status_filter.strip():
+        query = query.filter(Receipt.status == status_filter.strip())
+    if isinstance(book_number, str) and book_number.strip():
+        query = query.filter(Receipt.book_number == book_number.strip())
+
+    actual_skip = skip if isinstance(skip, int) else 0
+    actual_limit = limit if isinstance(limit, int) else 100
+    return (
+        query.options(
+            selectinload(Receipt.persons),
+            selectinload(Receipt.phones),
+            selectinload(Receipt.dispatch),
+        )
+        .order_by(Receipt.id.desc())
+        .offset(actual_skip)
+        .limit(actual_limit)
+        .all()
+    )
+
+
 @router.get("/{receipt_id}", response_model=ReceiptOut)
 def get_receipt(receipt_id: int, db: Session = Depends(get_db)):
-    receipt = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    receipt = (
+        db.query(Receipt)
+        .options(
+            selectinload(Receipt.persons),
+            selectinload(Receipt.phones),
+            selectinload(Receipt.dispatch),
+        )
+        .filter(Receipt.id == receipt_id)
+        .first()
+    )
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
     return receipt

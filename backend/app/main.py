@@ -7,13 +7,20 @@ from fastapi.staticfiles import StaticFiles
 import backend.app.models  # Ensures all models are registered on Base.metadata
 from backend.app.api.api_router import api_router
 from backend.app.core.config import settings
+from sqlalchemy import text
 from backend.app.core.database import Base, SessionLocal, engine
 from backend.app.core.security import get_password_hash
 from backend.app.models.user import User
 
-# Ensure database tables exist immediately upon module load
+# Ensure database tables exist upon module load (skip slow 10+ table reflection on Postgres if already initialized)
 try:
-    Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        Base.metadata.create_all(bind=engine)
+    else:
+        with engine.connect() as _conn:
+            _has_receipts = _conn.execute(text("SELECT to_regclass('public.receipts')")).scalar()
+        if not _has_receipts:
+            Base.metadata.create_all(bind=engine)
 except Exception as _db_init_err:
     print(f"Notice: Initial table check deferred: {_db_init_err}")
 

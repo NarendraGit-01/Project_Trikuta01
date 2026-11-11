@@ -1,10 +1,3 @@
-try:
-    import cv2
-    HAS_CV2 = True
-except Exception:
-    cv2 = None
-    HAS_CV2 = False
-
 import numpy as np
 from PIL import Image
 from typing import List, Tuple, Union
@@ -20,6 +13,12 @@ def auto_orient_and_crop(
     Returns:
         (cropped_pil_image, rotation_applied_degrees, bounding_box [x1, y1, x2, y2])
     """
+    try:
+        import cv2
+        HAS_CV2 = True
+    except Exception:
+        cv2 = None
+        HAS_CV2 = False
     if not HAS_CV2:
         # Graceful fallback using pure PIL
         if isinstance(img_input, str):

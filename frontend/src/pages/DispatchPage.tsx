@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Package, Truck, Printer, CheckCircle, Clock } from 'lucide-react';
-import { listReceipts, getReceipt } from '../services/api';
+import { listDetailedReceipts } from '../services/api';
 import { Receipt } from '../types';
 
 export const DispatchPage: React.FC = () => {
@@ -10,12 +10,9 @@ export const DispatchPage: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    listReceipts({ status: 'CONFIRMED', limit: 50 })
-      .then(async (items) => {
-        const fulls = await Promise.all(
-          items.map((it) => getReceipt(it.id).catch(() => null))
-        );
-        setReceipts(fulls.filter((f): f is Receipt => f !== null));
+    listDetailedReceipts({ status: 'CONFIRMED', limit: 50 })
+      .then((fulls) => {
+        setReceipts(fulls);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));

@@ -2,7 +2,6 @@ import re
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-import openpyxl
 from rapidfuzz import fuzz, process
 from sqlalchemy.orm import Session
 from backend.app.auth.deps import get_current_user, require_roles
@@ -135,6 +134,7 @@ def import_excel_master(
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"Excel file not found at {path}")
 
+    import openpyxl
     wb = openpyxl.load_workbook(path, read_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(min_row=2, values_only=True))

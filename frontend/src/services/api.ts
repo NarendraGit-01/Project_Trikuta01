@@ -227,6 +227,25 @@ export async function listReceipts(params?: {
   return res.json();
 }
 
+export async function listDetailedReceipts(params?: {
+  status?: string;
+  book_number?: string;
+  skip?: number;
+  limit?: number;
+}): Promise<Receipt[]> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set('status_filter', params.status);
+  if (params?.book_number) query.set('book_number', params.book_number);
+  if (params?.skip) query.set('skip', String(params.skip));
+  if (params?.limit) query.set('limit', String(params.limit));
+
+  const res = await fetch(`${API_BASE}/receipts/detailed?${query.toString()}`);
+  if (!res.ok) {
+    throw new Error('Failed to fetch detailed receipts');
+  }
+  return res.json();
+}
+
 export async function getReceipt(id: number): Promise<Receipt> {
   const res = await fetch(`${API_BASE}/receipts/${id}`);
   if (!res.ok) {

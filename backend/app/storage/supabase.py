@@ -28,7 +28,7 @@ class SupabaseStorageBackend(StorageBackend):
             "Authorization": f"Bearer {self.supabase_key}",
         }
         self.client = httpx.Client(timeout=30.0)
-        self._ensure_bucket()
+        self._bucket_verified = False
 
     def _ensure_bucket(self):
         """Create public bucket if it does not already exist."""
@@ -48,6 +48,9 @@ class SupabaseStorageBackend(StorageBackend):
             pass
 
     def save(self, file_bytes: bytes, filename: str, subfolder: str = "") -> str:
+        if not self._bucket_verified:
+            self._ensure_bucket()
+            self._bucket_verified = True
         ext = Path(filename).suffix
         unique_name = f"{uuid.uuid4().hex[:12]}_{Path(filename).name}"
         path = f"{subfolder}/{unique_name}" if subfolder else unique_name
