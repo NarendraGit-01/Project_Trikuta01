@@ -813,18 +813,6 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                  Gothram (English) *
-                </label>
-                <input
-                  type="text"
-                  value={gothramEn}
-                  onChange={(e) => handleGothramEnChange(e.target.value)}
-                  placeholder="e.g. PAIDIPALLI"
-                  className="w-full text-xs font-bold border border-gray-300 rounded-lg px-2.5 py-1.5 text-gray-900 focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
                 <label className="block text-[11px] font-semibold text-gray-600 mb-1 font-telugu">
                   గోత్రం (తెలుగు) — Auto-filled / Editable
                 </label>
@@ -834,6 +822,18 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                   onChange={(e) => handleGothramTeChange(e.target.value)}
                   placeholder="ఉదా. పైడిపల్లి"
                   className="w-full text-xs font-telugu font-semibold border border-gray-300 rounded-lg px-2.5 py-1.5 text-gray-900 focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                  Gothram (English) *
+                </label>
+                <input
+                  type="text"
+                  value={gothramEn}
+                  onChange={(e) => handleGothramEnChange(e.target.value)}
+                  placeholder="e.g. PAIDIPALLI"
+                  className="w-full text-xs font-bold border border-gray-300 rounded-lg px-2.5 py-1.5 text-gray-900 focus:ring-2 focus:ring-amber-500"
                 />
               </div>
             </div>
@@ -1074,18 +1074,6 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
-                  Address (English) * — Auto-filled / Editable
-                </label>
-                <textarea
-                  rows={3}
-                  value={addressEn}
-                  onChange={(e) => handleAddressEnChange(e.target.value)}
-                  placeholder="D.No, Street, Landmark, Village, District"
-                  className="w-full text-xs border border-gray-300 rounded-lg p-2 text-gray-900 focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
                 <label className="block text-[11px] font-semibold text-gray-600 mb-1 font-telugu">
                   చిరునామా (తెలుగు) — Auto-filled / Editable
                 </label>
@@ -1095,6 +1083,18 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
                   onChange={(e) => handleAddressTeChange(e.target.value)}
                   placeholder="డి.నెం, మెయిన్ రోడ్డు, గ్రామం, మండలం, జిల్లా"
                   className="w-full text-xs font-telugu border border-gray-300 rounded-lg p-2 text-gray-900 focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                  Address (English) * — Auto-filled / Editable
+                </label>
+                <textarea
+                  rows={3}
+                  value={addressEn}
+                  onChange={(e) => handleAddressEnChange(e.target.value)}
+                  placeholder="D.No, Street, Landmark, Village, District"
+                  className="w-full text-xs border border-gray-300 rounded-lg p-2 text-gray-900 focus:ring-2 focus:ring-amber-500"
                 />
               </div>
             </div>

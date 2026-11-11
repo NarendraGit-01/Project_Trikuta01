@@ -243,8 +243,20 @@ export async function createReceipt(data: any): Promise<Receipt> {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || 'Failed to save receipt');
+    let errorDetail = '';
+    try {
+      const err = await res.json();
+      if (Array.isArray(err.detail)) {
+        errorDetail = err.detail.map((e: any) => `${e.loc?.slice(1)?.join('.') || 'field'}: ${e.msg}`).join(', ');
+      } else if (typeof err.detail === 'object') {
+        errorDetail = err.detail.message || JSON.stringify(err.detail);
+      } else {
+        errorDetail = err.detail || '';
+      }
+    } catch {
+      errorDetail = await res.text().catch(() => '');
+    }
+    throw new Error(errorDetail || `Failed to save receipt (HTTP ${res.status}: ${res.statusText})`);
   }
   return res.json();
 }
@@ -257,8 +269,20 @@ export async function updateReceipt(id: number, data: any): Promise<Receipt> {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || 'Failed to update receipt');
+    let errorDetail = '';
+    try {
+      const err = await res.json();
+      if (Array.isArray(err.detail)) {
+        errorDetail = err.detail.map((e: any) => `${e.loc?.slice(1)?.join('.') || 'field'}: ${e.msg}`).join(', ');
+      } else if (typeof err.detail === 'object') {
+        errorDetail = err.detail.message || JSON.stringify(err.detail);
+      } else {
+        errorDetail = err.detail || '';
+      }
+    } catch {
+      errorDetail = await res.text().catch(() => '');
+    }
+    throw new Error(errorDetail || `Failed to update receipt (HTTP ${res.status}: ${res.statusText})`);
   }
   return res.json();
 }

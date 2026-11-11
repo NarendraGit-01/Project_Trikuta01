@@ -206,88 +206,165 @@ def create_receipt(
     current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db)
 ):
-    # Check duplicate detection
-    dup_query = db.query(Receipt).filter(Receipt.receipt_no == receipt_in.receipt_no.strip())
-    if settings.RECEIPT_UNIQUENESS_POLICY == "yearly" and receipt_in.receipt_year:
-        dup_query = dup_query.filter(Receipt.receipt_year == receipt_in.receipt_year)
-    
-    if dup_query.first():
+    try:
+        # Check duplicate detection
+        clean_receipt_no = receipt_in.receipt_no.strip()
+        dup_query = db.query(Receipt).filter(Receipt.receipt_no == clean_receipt_no)
+        if settings.RECEIPT_UNIQUENESS_POLICY == "yearly" and receipt_in.receipt_year:
+            dup_query = dup_query.filter(Receipt.receipt_year == receipt_in.receipt_year)
+        
+        existing = dup_query.first()
+        if existing:
+            # Update existing receipt record with confirmed/verified fields
+            existing.receipt_no = clean_receipt_no
+            existing.receipt_year = receipt_in.receipt_year
+            existing.receipt_date = receipt_in.receipt_date
+            existing.abhishekam_from = receipt_in.abhishekam_from
+            existing.abhishekam_to = receipt_in.abhishekam_to
+            existing.amount = receipt_in.amount
+            existing.gothram_en = receipt_in.gothram_en
+            existing.gothram_te = receipt_in.gothram_te
+            existing.gothram_master_id = receipt_in.gothram_master_id
+            existing.gothram_as_written = receipt_in.gothram_as_written
+            existing.address_en = receipt_in.address_en
+            existing.address_te = receipt_in.address_te
+            existing.pincode = receipt_in.pincode
+            existing.status = receipt_in.status
+            if receipt_in.book_number:
+                existing.book_number = receipt_in.book_number
+            if receipt_in.image_hash:
+                existing.image_hash = receipt_in.image_hash
+            if receipt_in.original_image_path:
+                existing.original_image_path = receipt_in.original_image_path
+            existing.model_name = receipt_in.model_name
+            existing.processing_cost = receipt_in.processing_cost
+            existing.processing_duration = receipt_in.processing_duration
+            existing.confidence_data = receipt_in.confidence_data
+            existing.ocr_raw = receipt_in.ocr_raw
+
+            # Replace persons
+            db.query(ReceiptPerson).filter(ReceiptPerson.receipt_id == existing.id).delete()
+            for p in receipt_in.persons:
+                person = ReceiptPerson(
+                    receipt_id=existing.id,
+                    position=p.position,
+                    given_name_en=p.given_name_en,
+                    given_name_te=p.given_name_te,
+                    surname_en=p.surname_en,
+                    surname_te=p.surname_te,
+                    original_ocr=p.original_ocr,
+                    verification_status=p.verification_status,
+                )
+                db.add(person)
+
+            # Replace phones
+            db.query(ReceiptPhone).filter(ReceiptPhone.receipt_id == existing.id).delete()
+            for ph in receipt_in.phones:
+                phone = ReceiptPhone(
+                    receipt_id=existing.id,
+                    number=ph.number.strip(),
+                    is_primary=ph.is_primary,
+                    verification_status=ph.verification_status,
+                )
+                db.add(phone)
+
+            # Ensure dispatch record exists
+            if not existing.dispatch:
+                dispatch = PrasadamDispatch(receipt_id=existing.id, status="PENDING")
+                db.add(dispatch)
+
+            # Add audit log
+            audit = AuditLog(
+                user_id=current_user.id if current_user else None,
+                action="UPDATE_RECEIPT",
+                entity="Receipt",
+                entity_id=existing.id,
+                new_value=json.dumps({"receipt_no": existing.receipt_no, "status": existing.status}),
+            )
+            db.add(audit)
+
+            db.commit()
+            db.refresh(existing)
+            return existing
+
+        # New receipt creation
+        receipt = Receipt(
+            receipt_no=clean_receipt_no,
+            receipt_year=receipt_in.receipt_year,
+            receipt_date=receipt_in.receipt_date,
+            abhishekam_from=receipt_in.abhishekam_from,
+            abhishekam_to=receipt_in.abhishekam_to,
+            amount=receipt_in.amount,
+            gothram_en=receipt_in.gothram_en,
+            gothram_te=receipt_in.gothram_te,
+            gothram_master_id=receipt_in.gothram_master_id,
+            gothram_as_written=receipt_in.gothram_as_written,
+            address_en=receipt_in.address_en,
+            address_te=receipt_in.address_te,
+            pincode=receipt_in.pincode,
+            status=receipt_in.status,
+            book_number=receipt_in.book_number,
+            image_hash=receipt_in.image_hash,
+            original_image_path=receipt_in.original_image_path,
+            corrected_image_path=receipt_in.corrected_image_path,
+            handwriting_crop_path=receipt_in.handwriting_crop_path,
+            ocr_raw=receipt_in.ocr_raw,
+            confidence_data=receipt_in.confidence_data,
+            model_name=receipt_in.model_name,
+            processing_cost=receipt_in.processing_cost,
+            processing_duration=receipt_in.processing_duration,
+            created_by=current_user.id if current_user else None,
+        )
+        db.add(receipt)
+        db.flush()  # get receipt.id
+
+        # Add persons
+        for p in receipt_in.persons:
+            person = ReceiptPerson(
+                receipt_id=receipt.id,
+                position=p.position,
+                given_name_en=p.given_name_en,
+                given_name_te=p.given_name_te,
+                surname_en=p.surname_en,
+                surname_te=p.surname_te,
+                original_ocr=p.original_ocr,
+                verification_status=p.verification_status,
+            )
+            db.add(person)
+
+        # Add phones
+        for ph in receipt_in.phones:
+            phone = ReceiptPhone(
+                receipt_id=receipt.id,
+                number=ph.number.strip(),
+                is_primary=ph.is_primary,
+                verification_status=ph.verification_status,
+            )
+            db.add(phone)
+
+        # Create empty dispatch record
+        dispatch = PrasadamDispatch(receipt_id=receipt.id, status="PENDING")
+        db.add(dispatch)
+
+        # Add audit log
+        audit = AuditLog(
+            user_id=current_user.id if current_user else None,
+            action="CREATE_RECEIPT",
+            entity="Receipt",
+            entity_id=receipt.id,
+            new_value=json.dumps({"receipt_no": receipt.receipt_no, "status": receipt.status}),
+        )
+        db.add(audit)
+
+        db.commit()
+        db.refresh(receipt)
+        return receipt
+    except Exception as e:
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Receipt number '{receipt_in.receipt_no}' already exists in the system."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database save error: {str(e)}"
         )
-
-    receipt = Receipt(
-        receipt_no=receipt_in.receipt_no.strip(),
-        receipt_year=receipt_in.receipt_year,
-        receipt_date=receipt_in.receipt_date,
-        abhishekam_from=receipt_in.abhishekam_from,
-        abhishekam_to=receipt_in.abhishekam_to,
-        amount=receipt_in.amount,
-        gothram_en=receipt_in.gothram_en,
-        gothram_te=receipt_in.gothram_te,
-        gothram_master_id=receipt_in.gothram_master_id,
-        gothram_as_written=receipt_in.gothram_as_written,
-        address_en=receipt_in.address_en,
-        address_te=receipt_in.address_te,
-        pincode=receipt_in.pincode,
-        status=receipt_in.status,
-        book_number=receipt_in.book_number,
-        image_hash=receipt_in.image_hash,
-        original_image_path=receipt_in.original_image_path,
-        corrected_image_path=receipt_in.corrected_image_path,
-        handwriting_crop_path=receipt_in.handwriting_crop_path,
-        ocr_raw=receipt_in.ocr_raw,
-        confidence_data=receipt_in.confidence_data,
-        model_name=receipt_in.model_name,
-        processing_cost=receipt_in.processing_cost,
-        processing_duration=receipt_in.processing_duration,
-        created_by=current_user.id if current_user else None,
-    )
-    db.add(receipt)
-    db.flush()  # get receipt.id
-
-    # Add persons
-    for p in receipt_in.persons:
-        person = ReceiptPerson(
-            receipt_id=receipt.id,
-            position=p.position,
-            given_name_en=p.given_name_en,
-            given_name_te=p.given_name_te,
-            surname_en=p.surname_en,
-            surname_te=p.surname_te,
-            original_ocr=p.original_ocr,
-            verification_status=p.verification_status,
-        )
-        db.add(person)
-
-    # Add phones
-    for ph in receipt_in.phones:
-        phone = ReceiptPhone(
-            receipt_id=receipt.id,
-            number=ph.number.strip(),
-            is_primary=ph.is_primary,
-            verification_status=ph.verification_status,
-        )
-        db.add(phone)
-
-    # Create empty dispatch record
-    dispatch = PrasadamDispatch(receipt_id=receipt.id, status="PENDING")
-    db.add(dispatch)
-
-    # Add audit log
-    audit = AuditLog(
-        user_id=current_user.id if current_user else None,
-        action="CREATE_RECEIPT",
-        entity="Receipt",
-        entity_id=receipt.id,
-        new_value=json.dumps({"receipt_no": receipt.receipt_no, "status": receipt.status}),
-    )
-    db.add(audit)
-
-    db.commit()
-    db.refresh(receipt)
-    return receipt
 
 
 @router.patch("/{receipt_id}", response_model=ReceiptOut)
