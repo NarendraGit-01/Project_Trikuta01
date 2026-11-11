@@ -206,18 +206,37 @@ def standardize_andhra_telangana_address(raw_text: str, pin: Optional[str] = Non
     if dist_te and dist_te not in cleaned_te:
         cleaned_te = f"{cleaned_te.rstrip(', ')}, {dist_te}"
 
-    # Build clean English representation
-    # Convert Telugu tokens to English using transliteration and known places
-    en_parts = []
-    if detected_town_info:
-        en_parts.append(f"{detected_town_info['en']}")
-        if detected_town_info.get("mandal_en"):
-            en_parts.append(f"{detected_town_info['mandal_en']} Mandal")
-        if dist_en:
-            en_parts.append(f"{dist_en} Dist")
-        if detected_town_info.get("state"):
-            en_parts.append(detected_town_info["state"])
-        cleaned_en = ", ".join(en_parts)
+    # Build clean English representation:
+    # Faithfully preserve all devotee handwritten tokens (house number, hamlet, street, mandal)
+    from backend.pipeline.transliterate import is_telugu, transliterate_te_to_en
+
+    if is_telugu(cleaned_te):
+        translated_en = cleaned_te
+        # Known administrative and place mappings
+        admin_replacements = [
+            ("డి.నెం:", "D.No: "),
+            ("డి.నెం", "D.No: "),
+            ("మండలం", "Mandal"),
+            ("జిల్లా", "Dist"),
+            ("గ్రామం", "Village"),
+            ("తాలూకా", "Taluk"),
+            ("ఎదురుగా", "Opp"),
+            ("సమీపంలో", "Near"),
+        ]
+        for te_k, en_v in {**AP_DISTRICTS, **TS_DISTRICTS}.items():
+            admin_replacements.append((en_v, f"{te_k} Dist"))
+            admin_replacements.append((en_v.replace(" జిల్లా", ""), te_k))
+
+        for kw, info in KNOWN_TOWNS.items():
+            if info.get("te") and info.get("en"):
+                admin_replacements.append((info["te"], info["en"]))
+            if info.get("mandal_te") and info.get("mandal_en"):
+                admin_replacements.append((info["mandal_te"], info["mandal_en"]))
+
+        for te_word, en_word in admin_replacements:
+            translated_en = translated_en.replace(te_word, en_word)
+
+        cleaned_en = transliterate_te_to_en(translated_en)
     else:
         cleaned_en = cleaned_te
         if dist_en and dist_en not in cleaned_en:
