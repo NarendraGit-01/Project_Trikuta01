@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import backend.app.models  # Ensures all models are registered on Base.metadata
 from backend.app.api.api_router import api_router
@@ -94,8 +95,21 @@ except Exception:
 app.include_router(api_router)
 
 
+# Mount built React frontend assets if present
+frontend_dist = Path("frontend/dist")
+if not frontend_dist.exists():
+    frontend_dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+
+assets_dir = frontend_dist / "assets"
+if assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+
 @app.get("/")
-def root():
+def serve_root():
+    index_file = frontend_dist / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
     return {
         "app": settings.APP_NAME,
         "temple": settings.TEMPLE_NAME_TE,
@@ -103,3 +117,33 @@ def root():
         "docs_url": "/docs",
         "api_v1": "/api/v1",
     }
+
+
+@app.get("/index.html")
+def serve_index_html():
+    index_file = frontend_dist / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="index.html not found")
+
+
+@app.get("/{full_path:path}")
+def serve_spa_fallback(full_path: str):
+    # Do not intercept API, docs, or static endpoints
+    if (
+        full_path.startswith("api")
+        or full_path.startswith("static")
+        or full_path.startswith("docs")
+        or full_path.startswith("openapi")
+    ):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    target = frontend_dist / full_path
+    if target.is_file():
+        return FileResponse(target)
+
+    index_file = frontend_dist / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
+
+    raise HTTPException(status_code=404, detail="Not Found")
