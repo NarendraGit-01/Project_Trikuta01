@@ -26,11 +26,11 @@ if db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
     elif has_psycopg:
         db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-# Graceful fallback to SQLite for local development when C database drivers are not installed locally
+# Graceful fallback to SQLite when C database drivers are not installed locally or on serverless
 if (db_url.startswith("postgresql://") or db_url.startswith("postgresql+")) and not has_psycopg2 and not has_psycopg:
-    if not os.getenv("VERCEL"):
-        print("Notice: PostgreSQL driver not installed locally. Using SQLite for local testing.")
-        db_url = "sqlite:///./temple_receipts.db"
+    fallback_path = "/tmp/temple_receipts.db" if os.getenv("VERCEL") else "./temple_receipts.db"
+    print(f"Notice: PostgreSQL driver not installed. Falling back to SQLite at {fallback_path}")
+    db_url = f"sqlite:///{fallback_path}"
 
 engine_kwargs = {"echo": False}
 
@@ -40,6 +40,8 @@ else:
     # PostgreSQL / Supabase connection pooling
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_recycle"] = 300
+    if ("supabase" in db_url.lower() or os.getenv("VERCEL")) and "sslmode" not in db_url:
+        engine_kwargs["connect_args"] = {"sslmode": "require"}
 
 engine = create_engine(db_url, **engine_kwargs)
 

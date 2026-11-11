@@ -244,8 +244,9 @@ export async function createReceipt(data: any): Promise<Receipt> {
 
   if (!res.ok) {
     let errorDetail = '';
+    const rawText = await res.text().catch(() => '');
     try {
-      const err = await res.json();
+      const err = JSON.parse(rawText);
       if (Array.isArray(err.detail)) {
         errorDetail = err.detail.map((e: any) => `${e.loc?.slice(1)?.join('.') || 'field'}: ${e.msg}`).join(', ');
       } else if (typeof err.detail === 'object') {
@@ -254,9 +255,9 @@ export async function createReceipt(data: any): Promise<Receipt> {
         errorDetail = err.detail || '';
       }
     } catch {
-      errorDetail = await res.text().catch(() => '');
+      errorDetail = rawText ? rawText.slice(0, 300) : '';
     }
-    throw new Error(errorDetail || `Failed to save receipt (HTTP ${res.status}: ${res.statusText})`);
+    throw new Error(errorDetail || `Failed to save receipt (HTTP ${res.status}: ${res.statusText || 'Server Error'})`);
   }
   return res.json();
 }
@@ -270,8 +271,9 @@ export async function updateReceipt(id: number, data: any): Promise<Receipt> {
 
   if (!res.ok) {
     let errorDetail = '';
+    const rawText = await res.text().catch(() => '');
     try {
-      const err = await res.json();
+      const err = JSON.parse(rawText);
       if (Array.isArray(err.detail)) {
         errorDetail = err.detail.map((e: any) => `${e.loc?.slice(1)?.join('.') || 'field'}: ${e.msg}`).join(', ');
       } else if (typeof err.detail === 'object') {
@@ -280,9 +282,9 @@ export async function updateReceipt(id: number, data: any): Promise<Receipt> {
         errorDetail = err.detail || '';
       }
     } catch {
-      errorDetail = await res.text().catch(() => '');
+      errorDetail = rawText ? rawText.slice(0, 300) : '';
     }
-    throw new Error(errorDetail || `Failed to update receipt (HTTP ${res.status}: ${res.statusText})`);
+    throw new Error(errorDetail || `Failed to update receipt (HTTP ${res.status}: ${res.statusText || 'Server Error'})`);
   }
   return res.json();
 }

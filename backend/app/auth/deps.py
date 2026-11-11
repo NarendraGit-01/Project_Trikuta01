@@ -55,8 +55,11 @@ def get_optional_current_user(
         except Exception:
             pass
 
-    # Default fallback to active staff account
-    return db.query(User).filter(User.username == "staff").first()
+    # Default fallback to active staff account (safely handles empty/missing tables on cold lambdas)
+    try:
+        return db.query(User).filter(User.username == "staff").first()
+    except Exception:
+        return None
 
 
 def require_roles(allowed_roles: List[str]):

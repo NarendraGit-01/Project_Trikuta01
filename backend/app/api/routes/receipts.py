@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from backend.app.auth.deps import get_current_user, get_optional_current_user
 from backend.app.core.config import settings
-from backend.app.core.database import get_db
+from backend.app.core.database import Base, engine, get_db
 from backend.app.models.audit import AuditLog
 from backend.app.models.correction import Correction
 from backend.app.models.dispatch import PrasadamDispatch
@@ -207,6 +207,12 @@ def create_receipt(
     db: Session = Depends(get_db)
 ):
     try:
+        # Ensure tables exist (critical on serverless cold starts / ephemeral /tmp SQLite)
+        try:
+            Base.metadata.create_all(bind=engine)
+        except Exception:
+            pass
+
         # Check duplicate detection
         clean_receipt_no = receipt_in.receipt_no.strip()
         dup_query = db.query(Receipt).filter(Receipt.receipt_no == clean_receipt_no)
@@ -237,8 +243,8 @@ def create_receipt(
             if receipt_in.original_image_path:
                 existing.original_image_path = receipt_in.original_image_path
             existing.model_name = receipt_in.model_name
-            existing.processing_cost = receipt_in.processing_cost
-            existing.processing_duration = receipt_in.processing_duration
+            existing.processing_cost = receipt_in.processing_cost or 0.0
+            existing.processing_duration = receipt_in.processing_duration or 0.0
             existing.confidence_data = receipt_in.confidence_data
             existing.ocr_raw = receipt_in.ocr_raw
 
@@ -273,18 +279,27 @@ def create_receipt(
                 dispatch = PrasadamDispatch(receipt_id=existing.id, status="PENDING")
                 db.add(dispatch)
 
-            # Add audit log
-            audit = AuditLog(
-                user_id=current_user.id if current_user else None,
-                action="UPDATE_RECEIPT",
-                entity="Receipt",
-                entity_id=existing.id,
-                new_value=json.dumps({"receipt_no": existing.receipt_no, "status": existing.status}),
-            )
-            db.add(audit)
-
             db.commit()
             db.refresh(existing)
+            # Load relationships before returning
+            _ = list(existing.persons)
+            _ = list(existing.phones)
+            _ = existing.dispatch
+
+            # Non-blocking audit log
+            try:
+                audit = AuditLog(
+                    user_id=current_user.id if current_user else None,
+                    action="UPDATE_RECEIPT",
+                    entity="Receipt",
+                    entity_id=existing.id,
+                    new_value=json.dumps({"receipt_no": existing.receipt_no, "status": existing.status}),
+                )
+                db.add(audit)
+                db.commit()
+            except Exception:
+                db.rollback()
+
             return existing
 
         # New receipt creation
@@ -305,14 +320,14 @@ def create_receipt(
             status=receipt_in.status,
             book_number=receipt_in.book_number,
             image_hash=receipt_in.image_hash,
-            original_image_path=receipt_in.original_image_path,
+            original_image_path=receipt_in.original_image_path or "uploaded_image.jpg",
             corrected_image_path=receipt_in.corrected_image_path,
             handwriting_crop_path=receipt_in.handwriting_crop_path,
             ocr_raw=receipt_in.ocr_raw,
             confidence_data=receipt_in.confidence_data,
             model_name=receipt_in.model_name,
-            processing_cost=receipt_in.processing_cost,
-            processing_duration=receipt_in.processing_duration,
+            processing_cost=receipt_in.processing_cost or 0.0,
+            processing_duration=receipt_in.processing_duration or 0.0,
             created_by=current_user.id if current_user else None,
         )
         db.add(receipt)
@@ -346,18 +361,27 @@ def create_receipt(
         dispatch = PrasadamDispatch(receipt_id=receipt.id, status="PENDING")
         db.add(dispatch)
 
-        # Add audit log
-        audit = AuditLog(
-            user_id=current_user.id if current_user else None,
-            action="CREATE_RECEIPT",
-            entity="Receipt",
-            entity_id=receipt.id,
-            new_value=json.dumps({"receipt_no": receipt.receipt_no, "status": receipt.status}),
-        )
-        db.add(audit)
-
         db.commit()
         db.refresh(receipt)
+        # Load relationships before returning
+        _ = list(receipt.persons)
+        _ = list(receipt.phones)
+        _ = receipt.dispatch
+
+        # Non-blocking audit log
+        try:
+            audit = AuditLog(
+                user_id=current_user.id if current_user else None,
+                action="CREATE_RECEIPT",
+                entity="Receipt",
+                entity_id=receipt.id,
+                new_value=json.dumps({"receipt_no": receipt.receipt_no, "status": receipt.status}),
+            )
+            db.add(audit)
+            db.commit()
+        except Exception:
+            db.rollback()
+
         return receipt
     except Exception as e:
         db.rollback()

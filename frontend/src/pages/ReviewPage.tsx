@@ -287,6 +287,10 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       initAddrEn = rawAddr;
       initAddrTe = transliterateToTelugu(rawAddr);
     }
+  } else if (initAddrTe && !initAddrEn) {
+    initAddrEn = transliterateTeluguToEnglish(initAddrTe);
+  } else if (initAddrEn && !initAddrTe) {
+    initAddrTe = transliterateToTelugu(initAddrEn);
   }
 
   const [addressEn, setAddressEn] = useState(initAddrEn);
@@ -1069,7 +1073,19 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700">
                 5. Postal Address for Prasadam (చిరునామా)
               </h3>
-              {getBadge('address')}
+              <div className="flex items-center space-x-2">
+                {addressTe && (
+                  <button
+                    type="button"
+                    onClick={() => setAddressEn(transliterateTeluguToEnglish(addressTe))}
+                    title="Re-sync English translation directly from Telugu text"
+                    className="text-[10px] font-semibold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded"
+                  >
+                    ⇄ Sync Te → En
+                  </button>
+                )}
+                {getBadge('address')}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
