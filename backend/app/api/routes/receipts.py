@@ -24,18 +24,38 @@ router = APIRouter(prefix="/receipts", tags=["Receipts"])
 def get_books_summary(db: Session = Depends(get_db)):
     """Return categorized folder stats grouped by book number."""
     from typing import Dict, Any
-    all_receipts = db.query(Receipt.id, Receipt.book_number, Receipt.status, Receipt.is_archived).all()
+    from sqlalchemy import func
 
-    archived_count = sum(1 for r in all_receipts if r.is_archived)
-    active_receipts = [r for r in all_receipts if not r.is_archived]
+    # Ultra-fast aggregate query directly in SQL engine
+    rows = (
+        db.query(
+            Receipt.book_number,
+            Receipt.status,
+            Receipt.is_archived,
+            func.count(Receipt.id)
+        )
+        .group_by(Receipt.book_number, Receipt.status, Receipt.is_archived)
+        .all()
+    )
 
-    total_all = len(active_receipts)
-    processed_all = sum(1 for r in active_receipts if r.status == "CONFIRMED")
-    pending_all = sum(1 for r in active_receipts if r.status != "CONFIRMED")
-
+    archived_count = 0
+    total_all = 0
+    processed_all = 0
+    pending_all = 0
     book_stats: Dict[str, Dict[str, Any]] = {}
-    for r in active_receipts:
-        bn = (r.book_number or "").strip()
+
+    for book_num, status, is_archived, count in rows:
+        if is_archived:
+            archived_count += count
+            continue
+
+        total_all += count
+        if status == "CONFIRMED":
+            processed_all += count
+        else:
+            pending_all += count
+
+        bn = (book_num or "").strip()
         key = bn if bn else "__UNASSIGNED__"
         if key not in book_stats:
             book_stats[key] = {
@@ -45,11 +65,11 @@ def get_books_summary(db: Session = Depends(get_db)):
                 "processed": 0,
                 "pending": 0,
             }
-        book_stats[key]["total"] += 1
-        if r.status == "CONFIRMED":
-            book_stats[key]["processed"] += 1
+        book_stats[key]["total"] += count
+        if status == "CONFIRMED":
+            book_stats[key]["processed"] += count
         else:
-            book_stats[key]["pending"] += 1
+            book_stats[key]["pending"] += count
 
     def sort_key(item):
         k = item["book_number"]
@@ -192,7 +212,7 @@ def list_detailed_receipts(
 
     actual_skip = skip if isinstance(skip, int) else 0
     actual_limit = limit if isinstance(limit, int) else 100
-    return (
+    receipts = (
         query.options(
             selectinload(Receipt.persons),
             selectinload(Receipt.phones),
@@ -203,6 +223,21 @@ def list_detailed_receipts(
         .limit(actual_limit)
         .all()
     )
+
+    storage = get_storage()
+    results = []
+    for r in receipts:
+        img_url = None
+        if r.original_image_path:
+            raw_p = r.original_image_path
+            if raw_p.startswith("http://") or raw_p.startswith("https://"):
+                img_url = raw_p
+            else:
+                img_url = storage.get_url(raw_p)
+        item = ReceiptOut.model_validate(r)
+        item.original_image_url = img_url
+        results.append(item)
+    return results
 
 
 @router.get("/{receipt_id}", response_model=ReceiptOut)
@@ -219,7 +254,19 @@ def get_receipt(receipt_id: int, db: Session = Depends(get_db)):
     )
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
-    return receipt
+
+    storage = get_storage()
+    img_url = None
+    if receipt.original_image_path:
+        raw_p = receipt.original_image_path
+        if raw_p.startswith("http://") or raw_p.startswith("https://"):
+            img_url = raw_p
+        else:
+            img_url = storage.get_url(raw_p)
+
+    out = ReceiptOut.model_validate(receipt)
+    out.original_image_url = img_url
+    return out
 
 
 @router.post("/check-duplicate")

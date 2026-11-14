@@ -11,10 +11,22 @@ def serve_storage_file(file_path: str):
     storage = get_storage()
     data = storage.get(file_path)
     if data is None:
+        # Fallback 1: check inside "Reference Images" folder
+        sample_direct = Path("Reference Images") / file_path
+        if sample_direct.is_file():
+            with open(sample_direct, "rb") as f:
+                data = f.read()
+        else:
+            sample_basename = Path("Reference Images") / Path(file_path).name
+            if sample_basename.is_file():
+                with open(sample_basename, "rb") as f:
+                    data = f.read()
+
+    if data is None:
         raise HTTPException(status_code=404, detail="File not found")
 
     content_type, _ = mimetypes.guess_type(file_path)
     if not content_type:
-        content_type = "application/octet-stream"
+        content_type = "image/jpeg"
 
     return Response(content=data, media_type=content_type)

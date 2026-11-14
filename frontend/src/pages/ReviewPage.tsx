@@ -41,6 +41,23 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   onBackToScan,
   onSaved,
 }) => {
+  const [currentImgSrc, setCurrentImgSrc] = useState(imageUrl);
+
+  useEffect(() => {
+    setCurrentImgSrc(imageUrl);
+  }, [imageUrl]);
+
+  const handleImageError = () => {
+    if (sourceFilename) {
+      const cleanName = sourceFilename.replace(/^.*[\\\/]/, '');
+      if (!currentImgSrc.includes('/api/v1/storage/')) {
+        setCurrentImgSrc(`/api/v1/storage/${sourceFilename}`);
+      } else if (!currentImgSrc.includes('/static/samples/')) {
+        setCurrentImgSrc(`/static/samples/${cleanName}`);
+      }
+    }
+  };
+
   /* ── 1. Receipt Header ─────────────────────────── */
   const [receiptNo, setReceiptNo] = useState(result.receipt_no || '');
   const [bookNumber, setBookNumber] = useState(
@@ -730,7 +747,8 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
               }}
             >
               <img
-                src={imageUrl}
+                src={currentImgSrc}
+                onError={handleImageError}
                 alt="Receipt Original"
                 draggable={false}
                 className="max-h-full max-w-full w-full object-contain shadow-2xl rounded pointer-events-none"

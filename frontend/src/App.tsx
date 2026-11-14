@@ -118,9 +118,15 @@ export const App: React.FC = () => {
         },
       };
 
-      const imgUrl = receipt.original_image_path
-        ? `/static/samples/${receipt.original_image_path}`
-        : '';
+      let imgUrl = receipt.original_image_url || '';
+      if (!imgUrl && receipt.original_image_path) {
+        const raw = receipt.original_image_path;
+        if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/api/') || raw.startsWith('/static/')) {
+          imgUrl = raw;
+        } else {
+          imgUrl = `/api/v1/storage/${raw}`;
+        }
+      }
 
       setActiveReceiptId(receipt.id);
       setActiveOCRResult(mappedResult);

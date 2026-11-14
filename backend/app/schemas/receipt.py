@@ -74,6 +74,7 @@ class ReceiptUpdate(BaseModel):
 class ReceiptOut(ReceiptBase):
     id: int
     original_image_path: str
+    original_image_url: Optional[str] = None
     corrected_image_path: Optional[str] = None
     handwriting_crop_path: Optional[str] = None
     ocr_raw: Optional[Dict[str, Any]] = None

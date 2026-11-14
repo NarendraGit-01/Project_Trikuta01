@@ -59,18 +59,19 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
   const [newBookValue, setNewBookValue] = useState('');
   const [isUpdatingBook, setIsUpdatingBook] = useState(false);
 
-  const loadData = async (activeFolder = selectedFolder) => {
+  const loadData = async (activeFolder = selectedFolder, reloadSummary = false) => {
     setLoading(true);
     try {
+      const shouldFetchSummary = reloadSummary || !booksSummary;
       const [listData, summaryData] = await Promise.all([
         listReceipts({
           q: searchQuery || undefined,
           status: statusFilter || undefined,
           book_number: activeFolder || undefined,
           archived_only: showArchived,
-          limit: 100,
+          limit: 50,
         }),
-        fetchBooksSummary().catch(() => null),
+        shouldFetchSummary ? fetchBooksSummary().catch(() => null) : Promise.resolve(null),
       ]);
       setReceipts(listData);
       if (summaryData) {

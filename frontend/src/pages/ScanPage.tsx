@@ -22,6 +22,8 @@ import {
   RefreshCw,
   Plus,
   CheckCheck,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import {
   processUploadOCR,
@@ -148,6 +150,55 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [skipTranscription, setSkipTranscription] = useState<boolean>(true);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+
+  // Zoom & Pan states for Image Preview
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [startPan, setStartPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const viewerRef = useRef<HTMLDivElement>(null);
+
+  const handleZoom = (delta: number) => {
+    setZoomLevel((prev) => Math.min(Math.max(0.5, prev + delta), 4));
+  };
+
+  const handleResetZoomPan = () => {
+    setZoomLevel(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (isManualCropMode) return;
+    e.preventDefault();
+    const zoomDelta = e.deltaY < 0 ? 0.15 : -0.15;
+    setZoomLevel((prev) => Math.min(Math.max(0.5, prev + zoomDelta), 4));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isManualCropMode || e.button !== 0) return;
+    setIsPanning(true);
+    setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning || isManualCropMode) return;
+    setPan({
+      x: e.clientX - startPan.x,
+      y: e.clientY - startPan.y,
+    });
+  };
+
+  const handleMouseUp = () => setIsPanning(false);
+
+  const handleDoubleClick = () => {
+    if (isManualCropMode) return;
+    if (zoomLevel > 1.2) {
+      setZoomLevel(1);
+      setPan({ x: 0, y: 0 });
+    } else {
+      setZoomLevel(2);
+    }
+  };
 
   // Drag and drop states
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -561,26 +612,9 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     await addStoredReceipts([updatedItem]).catch(() => {});
   };
 
-  const handleAutoCropSelected = async () => {
-    if (!selectedReceipt) return;
-    setIsCropping(true);
-    try {
-      const srcBlob = await resolveItemBlob(selectedReceipt);
-      const file = new File([srcBlob], selectedReceipt.filename, {
-        type: srcBlob.type || 'image/jpeg',
-      });
-      const cropRes = await autoCropImage(file);
-      if (cropRes && cropRes.url) {
-        const res = await fetch(cropRes.url);
-        const croppedBlob = await res.blob();
-        await saveCroppedBlobForSelected(croppedBlob);
-      }
-    } catch (err) {
-      console.warn('Auto-crop notice:', err);
-    } finally {
-      setIsCropping(false);
-    }
-  };
+  useEffect(() => {
+    handleResetZoomPan();
+  }, [selectedId]);
 
   /* ── 7. RUN OCR (SINGLE RECEIPT) ────────────────────────── */
   const handleRunOCRForReceipt = async (item: StoredReceiptItem, autoNavigateToReview = true) => {
@@ -1057,18 +1091,6 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       <span className="text-[10px]">Manual Crop</span>
                     </button>
 
-                    {/* Auto-Crop Button */}
-                    <button
-                      type="button"
-                      onClick={handleAutoCropSelected}
-                      disabled={isCropping || isManualCropMode || isProcessingSingle}
-                      title="Auto-detect slip edges & crop background"
-                      className="px-2 py-1 rounded bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-900 disabled:opacity-40 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      <span className="text-[10px]">Auto-Crop</span>
-                    </button>
-
                     {/* Restore Original Photo (shown after cropping) */}
                     {selectedReceipt.originalBlob && (
                       <button
@@ -1079,9 +1101,38 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                         className="px-2 py-1 rounded bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-700 text-xs font-semibold flex items-center space-x-1 border border-gray-200 transition-colors"
                       >
                         <RefreshCw className="w-3 h-3" />
-                        <span className="text-[10px]">Reset</span>
+                        <span className="text-[10px]">Reset Photo</span>
                       </button>
                     )}
+
+                    {/* Zoom In/Out Controls */}
+                    <div className="flex items-center space-x-0.5 bg-gray-100 rounded-lg p-0.5 border border-gray-200">
+                      <button
+                        type="button"
+                        onClick={() => handleZoom(-0.2)}
+                        disabled={zoomLevel <= 0.5 || isManualCropMode}
+                        title="Zoom Out (Scroll wheel down)"
+                        className="p-1 text-gray-600 hover:text-gray-900 hover:bg-white rounded disabled:opacity-40 transition-colors"
+                      >
+                        <ZoomOut className="w-3.5 h-3.5" />
+                      </button>
+                      <span
+                        onClick={handleResetZoomPan}
+                        title="Click to reset zoom to 100%"
+                        className="px-1 text-[10px] font-mono font-semibold text-gray-700 cursor-pointer hover:text-amber-800"
+                      >
+                        {Math.round(zoomLevel * 100)}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleZoom(0.2)}
+                        disabled={zoomLevel >= 4 || isManualCropMode}
+                        title="Zoom In (Scroll wheel up)"
+                        className="p-1 text-gray-600 hover:text-gray-900 hover:bg-white rounded disabled:opacity-40 transition-colors"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
 
                     {/* Rotation Controls */}
                     <button
@@ -1116,12 +1167,32 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                 )}
               </div>
 
-              {/* Wide Image Canvas Container */}
-              <div className="relative flex-1 min-h-[550px] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-gray-300 shadow-inner">
+              {/* Wide Image Canvas Container with Pan & Zoom */}
+              <div
+                ref={viewerRef}
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onDoubleClick={handleDoubleClick}
+                className={`relative flex-1 min-h-[550px] bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center p-4 border border-gray-300 shadow-inner select-none ${
+                  !isManualCropMode && selectedReceipt
+                    ? isPanning
+                      ? 'cursor-grabbing'
+                      : 'cursor-grab'
+                    : ''
+                }`}
+                title={
+                  !isManualCropMode && selectedReceipt
+                    ? 'Scroll mouse wheel to zoom • Click & drag to pan • Double-click for 2x zoom'
+                    : undefined
+                }
+              >
                 {isCropping && (
                   <div className="absolute inset-0 bg-slate-900/80 z-20 flex flex-col items-center justify-center text-white backdrop-blur-sm">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-3 border-amber-400 border-t-transparent mb-2" />
-                    <p className="text-xs font-semibold text-amber-200">Auto-orienting & tightly cropping slip...</p>
+                    <p className="text-xs font-semibold text-amber-200">Cropping slip...</p>
                   </div>
                 )}
 
@@ -1134,12 +1205,19 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       onCancel={() => setIsManualCropMode(false)}
                     />
                   ) : (
-                    <img
-                      src={selectedReceipt.previewUrl || selectedReceipt.imageUrl}
-                      alt={selectedReceipt.filename}
-                      style={{ transform: `rotate(${selectedReceipt.rotation}deg)` }}
-                      className="max-h-[580px] max-w-full w-auto object-contain rounded-lg shadow-2xl transition-transform duration-200"
-                    />
+                    <div
+                      className="transition-transform duration-75 origin-center will-change-transform flex items-center justify-center w-full h-full"
+                      style={{
+                        transform: `translate(${pan.x}px, ${pan.y}px) rotate(${selectedReceipt.rotation}deg) scale(${zoomLevel})`,
+                      }}
+                    >
+                      <img
+                        src={selectedReceipt.previewUrl || selectedReceipt.imageUrl}
+                        alt={selectedReceipt.filename}
+                        draggable={false}
+                        className="max-h-[580px] max-w-full w-auto object-contain rounded-lg shadow-2xl pointer-events-none"
+                      />
+                    </div>
                   )
                 ) : (
                   /* Empty Queue Dropzone */
@@ -1169,6 +1247,23 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       className="hidden"
                     />
                   </label>
+                )}
+
+                {/* Floating Quick Helper Badge for Scan Page */}
+                {selectedReceipt && !isManualCropMode && (
+                  <div className="absolute bottom-3 left-3 pointer-events-none bg-slate-950/85 backdrop-blur-sm text-[10px] text-amber-200/90 px-2.5 py-1.5 rounded-lg border border-slate-700/60 flex items-center space-x-1.5 shadow-lg">
+                    <span>🖱️ Wheel to Zoom</span>
+                    <span className="text-gray-500">•</span>
+                    <span>Drag to Pan</span>
+                    <span className="text-gray-500">•</span>
+                    <span>2x on Double-Click</span>
+                    {zoomLevel !== 1 && (
+                      <>
+                        <span className="text-gray-500">•</span>
+                        <span className="text-white font-mono font-bold">{Math.round(zoomLevel * 100)}%</span>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
 

@@ -110,7 +110,7 @@ def _resolve_supabase_ipv4_url(url_str: str, engine_kwargs: dict):
         detected = _detect_aws_region_from_ipv6(ipv6_addr)
         if detected:
             regions.append(detected)
-    for fallback_reg in ("ap-south-1", "ap-southeast-1", "ap-northeast-2", "ap-northeast-1", "us-east-1", "eu-central-1"):
+    for fallback_reg in ("ap-northeast-2", "ap-south-1", "ap-southeast-1", "ap-northeast-1", "us-east-1", "eu-central-1"):
         if fallback_reg not in regions:
             regions.append(fallback_reg)
 
@@ -119,7 +119,7 @@ def _resolve_supabase_ipv4_url(url_str: str, engine_kwargs: dict):
 
     probe_kwargs = dict(engine_kwargs)
     probe_connect_args = dict(probe_kwargs.get("connect_args") or {})
-    probe_connect_args["connect_timeout"] = 3
+    probe_connect_args["connect_timeout"] = 1.5
     probe_kwargs["connect_args"] = probe_connect_args
 
     from concurrent.futures import ThreadPoolExecutor

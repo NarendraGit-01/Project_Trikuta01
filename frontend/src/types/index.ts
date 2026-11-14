@@ -44,6 +44,7 @@ export interface Receipt {
   book_number?: string;
   image_hash?: string;
   original_image_path: string;
+  original_image_url?: string;
   corrected_image_path?: string;
   handwriting_crop_path?: string;
   processing_cost: number;
