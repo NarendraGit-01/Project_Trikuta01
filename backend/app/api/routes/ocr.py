@@ -535,8 +535,8 @@ async def update_staged_receipt_image(staged_id: int, file: UploadFile = File(..
 
 
 @router.delete("/staging/{staged_id}")
-def delete_staged_receipt(staged_id: int):
-    """Remove a staged image from the queue and storage."""
+def delete_staged_receipt(staged_id: int, delete_file: bool = False):
+    """Remove a staged image from the queue (only deletes underlying storage file if delete_file is True)."""
     db = SessionLocal()
     try:
         item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
@@ -545,7 +545,7 @@ def delete_staged_receipt(staged_id: int):
         file_path = item.file_path
         db.delete(item)
         db.commit()
-        if file_path:
+        if delete_file and file_path:
             try:
                 get_storage().delete(file_path)
             except Exception:

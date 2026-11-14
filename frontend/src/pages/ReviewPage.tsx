@@ -531,7 +531,11 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       address_te: addressTe.trim(),
       pincode: pincode.trim(),
       status: targetStatus,
-      original_image_path: sourceFilename || 'uploaded_image.jpg',
+      original_image_path:
+        (result.intermediate_passes as any)?.stored_original_path ||
+        imageUrl ||
+        sourceFilename ||
+        'uploaded_image.jpg',
       model_name: result.token_usage?.model_name || 'gemini-3.5-flash-lite',
       processing_cost: result.total_cost_usd || 0.0,
       processing_duration: result.duration_seconds || 0.0,

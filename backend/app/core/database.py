@@ -82,14 +82,7 @@ def _resolve_supabase_ipv4_url(url_str: str, engine_kwargs: dict):
     project_ref = m.group(1)
     port = u.port or 5432
 
-    # 1. Check if the host already resolves via IPv4
-    try:
-        socket.getaddrinfo(u.host, port, socket.AF_INET)
-        return url_str
-    except socket.gaierror:
-        pass
-
-    # 2. Check if direct IPv6 actually connects in this environment (skip on Vercel which is IPv4-only)
+    # 1. Check if direct IPv6 actually connects in this environment (skip on Vercel which is strictly IPv4-only)
     ipv6_addr = None
     try:
         ipv6_info = socket.getaddrinfo(u.host, port, socket.AF_INET6)
@@ -104,60 +97,14 @@ def _resolve_supabase_ipv4_url(url_str: str, engine_kwargs: dict):
     except OSError:
         pass
 
-    # 3. Direct IPv6 unreachable -> locate IPv4 Supavisor pooler shard
-    regions: List[str] = []
-    if ipv6_addr:
-        detected = _detect_aws_region_from_ipv6(ipv6_addr)
-        if detected:
-            regions.append(detected)
-    for fallback_reg in ("ap-northeast-2", "ap-south-1", "ap-southeast-1", "ap-northeast-1", "us-east-1", "eu-central-1"):
-        if fallback_reg not in regions:
-            regions.append(fallback_reg)
-
+    # 2. Direct IPv6 unreachable or running on Vercel -> switch to Supavisor IPv4 pooler
+    region = (_detect_aws_region_from_ipv6(ipv6_addr) if ipv6_addr else None) or "ap-northeast-2"
     base_user = (u.username or "postgres").split(".")[0]
     pooler_user = f"{base_user}.{project_ref}"
 
-    probe_kwargs = dict(engine_kwargs)
-    probe_connect_args = dict(probe_kwargs.get("connect_args") or {})
-    probe_connect_args["connect_timeout"] = 1.5
-    probe_kwargs["connect_args"] = probe_connect_args
-
-    from concurrent.futures import ThreadPoolExecutor
-
-    def _probe_shard(pooler_host: str, pooler_port: int):
-        try:
-            socket.getaddrinfo(pooler_host, pooler_port, socket.AF_INET)
-        except socket.gaierror:
-            return None
-        candidate = u.set(host=pooler_host, port=pooler_port, username=pooler_user)
-        temp_eng = None
-        try:
-            temp_eng = create_engine(candidate, **probe_kwargs)
-            with temp_eng.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            return ("ok", candidate, pooler_host, pooler_port)
-        except Exception as exc:
-            if "password authentication failed" in str(exc).lower():
-                return ("auth_err", candidate, pooler_host, pooler_port)
-            return None
-        finally:
-            if temp_eng is not None:
-                temp_eng.dispose()
-
-    for region in regions:
-        for pooler_port in (5432, 6543):
-            hosts = [f"aws-0-{region}.pooler.supabase.com", f"aws-1-{region}.pooler.supabase.com"]
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                results = list(pool.map(lambda h: _probe_shard(h, pooler_port), hosts))
-            for res in results:
-                if res and res[0] == "ok":
-                    print(f"Notice: Switched IPv6-only Supabase host to IPv4 pooler {res[2]}:{res[3]}")
-                    return res[1]
-            for res in results:
-                if res and res[0] == "auth_err":
-                    return res[1]
-
-    return url_str
+    candidate = u.set(host=f"aws-0-{region}.pooler.supabase.com", port=5432, username=pooler_user)
+    print(f"Notice: Switched IPv6-only Supabase host to IPv4 pooler {candidate.host}:{candidate.port}")
+    return candidate
 
 db_url = settings.DATABASE_URL
 # Supabase / cloud providers output postgres:// or postgresql://

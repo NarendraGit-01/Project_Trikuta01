@@ -20,6 +20,19 @@ from backend.app.storage import get_storage
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
 
+def _get_receipt_image_url(r, storage) -> Optional[str]:
+    path = r.original_image_path
+    if r.ocr_raw and isinstance(r.ocr_raw, dict):
+        stored = r.ocr_raw.get("stored_original_path")
+        if stored:
+            path = stored
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    return storage.get_url(path)
+
+
 @router.get("/books/summary")
 def get_books_summary(db: Session = Depends(get_db)):
     """Return categorized folder stats grouped by book number."""
@@ -169,9 +182,7 @@ def list_receipts(
         if first_person:
             p_name = f"{first_person.given_name_en or first_person.given_name_te or ''} {first_person.surname_en or first_person.surname_te or ''}".strip()
 
-        img_url = None
-        if r.original_image_path:
-            img_url = r.original_image_path if r.original_image_path.startswith("http") else storage.get_url(r.original_image_path)
+        img_url = _get_receipt_image_url(r, storage)
 
         items.append(
             ReceiptListItem(
@@ -227,15 +238,8 @@ def list_detailed_receipts(
     storage = get_storage()
     results = []
     for r in receipts:
-        img_url = None
-        if r.original_image_path:
-            raw_p = r.original_image_path
-            if raw_p.startswith("http://") or raw_p.startswith("https://"):
-                img_url = raw_p
-            else:
-                img_url = storage.get_url(raw_p)
         item = ReceiptOut.model_validate(r)
-        item.original_image_url = img_url
+        item.original_image_url = _get_receipt_image_url(r, storage)
         results.append(item)
     return results
 
@@ -256,16 +260,8 @@ def get_receipt(receipt_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Receipt not found")
 
     storage = get_storage()
-    img_url = None
-    if receipt.original_image_path:
-        raw_p = receipt.original_image_path
-        if raw_p.startswith("http://") or raw_p.startswith("https://"):
-            img_url = raw_p
-        else:
-            img_url = storage.get_url(raw_p)
-
     out = ReceiptOut.model_validate(receipt)
-    out.original_image_url = img_url
+    out.original_image_url = _get_receipt_image_url(receipt, storage)
     return out
 
 
