@@ -51,9 +51,13 @@ def check_and_annotate_duplicate(result: PipelineResult, db: Optional[Session] =
                     Receipt.receipt_no == clean_numeric,
                 )
             )
+            # First check with specific receipt year if present
             if settings.RECEIPT_UNIQUENESS_POLICY == "yearly" and result.receipt_year:
-                q = q.filter(Receipt.receipt_year == result.receipt_year)
-            existing = q.first()
+                existing = q.filter(Receipt.receipt_year == result.receipt_year).first()
+
+            # If not found for that year, check globally across all years
+            if not existing:
+                existing = q.first()
 
         # Also check by image_hash if available
         img_hash = getattr(result, "image_hash", None)

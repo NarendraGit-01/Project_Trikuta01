@@ -531,9 +531,24 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       await deleteStagedReceipt(stagedId).catch(() => {});
     }
 
+    const cleanNo = receiptNo.trim() || result.receipt_no;
     const allStored = await getAllStoredReceipts().catch(() => []);
+    const match = allStored.find(
+      (r) =>
+        (sourceFilename && r.filename === sourceFilename) ||
+        (r.result && r.result.receipt_no === cleanNo)
+    );
+    if (match) {
+      await deleteStoredReceipt(match.id).catch(() => {});
+    }
+
     const nextItem = allStored.find(
-      (r) => r.status === 'SUCCESS' && r.result && !r.result.is_duplicate && !r.reviewed
+      (r) =>
+        r.status === 'SUCCESS' &&
+        r.result &&
+        !r.result.is_duplicate &&
+        !r.reviewed &&
+        r.result.receipt_no !== cleanNo
     );
 
     if (nextItem && nextItem.result && onNextReview) {
@@ -632,7 +647,60 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       onSaved(savedId);
     } catch (err: any) {
       setIsSaving(false);
-      setSaveError(err.message || 'Failed to save receipt record to database');
+      const errMsg = err.message || '';
+      const isDuplicateConflict =
+        errMsg.includes('409') ||
+        errMsg.toLowerCase().includes('already exists') ||
+        errMsg.toLowerCase().includes('duplicate');
+
+      if (isDuplicateConflict) {
+        // 1. Purge duplicate receipt from cloud staged storage
+        const stagedId = (result.intermediate_passes as any)?.staged_id;
+        if (stagedId) {
+          await deleteStagedReceipt(stagedId).catch(() => {});
+        }
+
+        // 2. Purge from local IndexedDB
+        const allStored = await getAllStoredReceipts().catch(() => []);
+        const cleanNo = receiptNo.trim() || result.receipt_no;
+        const match = allStored.find(
+          (r) =>
+            (sourceFilename && r.filename === sourceFilename) ||
+            (r.result && r.result.receipt_no === cleanNo)
+        );
+        if (match) {
+          await deleteStoredReceipt(match.id).catch(() => {});
+        }
+
+        // 3. User feedback
+        alert(
+          `రశీదు #${cleanNo} ఇప్పటికే నిల్వ చేయబడింది (Receipt #${cleanNo} already exists in temple database). Duplicate entry has been removed from OCR queue.`
+        );
+
+        // 4. Check for next pending review in queue
+        const remainingStored = await getAllStoredReceipts().catch(() => []);
+        const nextItem = remainingStored.find(
+          (r) =>
+            r.status === 'SUCCESS' &&
+            r.result &&
+            !r.result.is_duplicate &&
+            !r.reviewed &&
+            r.result.receipt_no !== cleanNo
+        );
+
+        if (nextItem && nextItem.result && onNextReview) {
+          const nextUrl =
+            nextItem.previewUrl ||
+            nextItem.imageUrl ||
+            (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
+          onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
+        } else {
+          onBackToScan();
+        }
+        return;
+      }
+
+      setSaveError(errMsg || 'Failed to save receipt record to database');
     }
   };
 
