@@ -17,9 +17,12 @@ import {
   RotateCcw,
   BookOpen,
   Trash2,
-  ArchiveRestore
+  ArchiveRestore,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
-import { listReceipts, fetchBooksSummary, updateReceipt } from '../services/api';
+import { listReceipts, fetchBooksSummary, updateReceipt, deleteReceiptPermanent, batchDeleteReceiptsPermanent } from '../services/api';
 import { ReceiptListItem, BooksSummaryResponse, BookFolderItem } from '../types';
 
 const API_BASE = '/api/v1';
@@ -51,6 +54,42 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
   const [showArchived, setShowArchived] = useState(false);
   const [archivingId, setArchivingId] = useState<number | null>(null);
   const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [permanentDeletingId, setPermanentDeletingId] = useState<number | null>(null);
+  const [isBatchActionLoading, setIsBatchActionLoading] = useState(false);
+
+  // Sorting and multi-selection
+  const [sortBy, setSortBy] = useState<'id_desc' | 'receipt_no_asc' | 'receipt_no_desc' | 'date_desc'>('id_desc');
+  const [selectedArchivedIds, setSelectedArchivedIds] = useState<Set<number>>(new Set());
+
+  // Clear selections when switching between active and archived views
+  useEffect(() => {
+    setSelectedArchivedIds(new Set());
+  }, [showArchived]);
+
+  // Derived sorted receipts list
+  const sortedReceipts = React.useMemo(() => {
+    const list = [...receipts];
+    if (sortBy === 'receipt_no_asc') {
+      list.sort((a, b) => {
+        const numA = parseInt(a.receipt_no.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(b.receipt_no.replace(/\D/g, ''), 10) || 0;
+        if (numA !== numB) return numA - numB;
+        return a.receipt_no.localeCompare(b.receipt_no);
+      });
+    } else if (sortBy === 'receipt_no_desc') {
+      list.sort((a, b) => {
+        const numA = parseInt(a.receipt_no.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(b.receipt_no.replace(/\D/g, ''), 10) || 0;
+        if (numA !== numB) return numB - numA;
+        return b.receipt_no.localeCompare(a.receipt_no);
+      });
+    } else if (sortBy === 'date_desc') {
+      list.sort((a, b) => (b.receipt_date || '').localeCompare(a.receipt_date || ''));
+    } else {
+      list.sort((a, b) => b.id - a.id);
+    }
+    return list;
+  }, [receipts, sortBy]);
 
   // Quick edit book number modal state
   const [editingReceipt, setEditingReceipt] = useState<{
@@ -166,6 +205,70 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
       alert(`Failed to restore: ${err.message || 'Unknown error'}`);
     } finally {
       setRestoringId(null);
+    }
+  };
+
+  const handleBatchPermanentDelete = async () => {
+    if (selectedArchivedIds.size === 0) return;
+    const count = selectedArchivedIds.size;
+    if (
+      !confirm(
+        `Are you sure you want to PERMANENTLY delete ${count} archived receipts? This action cannot be undone and will permanently remove them from the database.`
+      )
+    ) {
+      return;
+    }
+    setIsBatchActionLoading(true);
+    try {
+      await batchDeleteReceiptsPermanent(Array.from(selectedArchivedIds));
+      setSelectedArchivedIds(new Set());
+      await loadData(selectedFolder, true);
+    } catch (err: any) {
+      alert(`Failed to permanently delete receipts: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsBatchActionLoading(false);
+    }
+  };
+
+  const handleSinglePermanentDelete = async (r: ReceiptListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (
+      !confirm(
+        `Are you sure you want to PERMANENTLY delete receipt #${r.receipt_no}? This will permanently remove it from the database.`
+      )
+    ) {
+      return;
+    }
+    setPermanentDeletingId(r.id);
+    try {
+      await deleteReceiptPermanent(r.id);
+      setSelectedArchivedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(r.id);
+        return next;
+      });
+      await loadData(selectedFolder, true);
+    } catch (err: any) {
+      alert(`Failed to delete receipt: ${err.message || 'Unknown error'}`);
+    } finally {
+      setPermanentDeletingId(null);
+    }
+  };
+
+  const handleBatchRestore = async () => {
+    if (selectedArchivedIds.size === 0) return;
+    setIsBatchActionLoading(true);
+    try {
+      const ids = Array.from(selectedArchivedIds);
+      for (const id of ids) {
+        await restoreReceipt(id).catch(() => {});
+      }
+      setSelectedArchivedIds(new Set());
+      await loadData(selectedFolder, true);
+    } catch (err: any) {
+      alert(`Failed to restore receipts: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsBatchActionLoading(false);
     }
   };
 
@@ -492,6 +595,22 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
               <option value="INCOMPLETE">Incomplete Only</option>
             </select>
 
+            {/* Sort Dropdown */}
+            <div className="flex items-center space-x-1.5 bg-gray-50 border border-gray-300 rounded-xl px-2.5 py-1.5 text-xs">
+              <ArrowUpDown className="w-3.5 h-3.5 text-gray-500" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="text-xs text-gray-800 bg-transparent focus:outline-none font-semibold cursor-pointer"
+                title="Sort receipt list"
+              >
+                <option value="id_desc">Newest First (ID ↓)</option>
+                <option value="receipt_no_asc">Receipt # (1 → 9999) ↑</option>
+                <option value="receipt_no_desc">Receipt # (9999 → 1) ↓</option>
+                <option value="date_desc">Date (Newest First)</option>
+              </select>
+            </div>
+
             <button
               type="submit"
               className="px-4 py-2 bg-gray-900 hover:bg-black text-white text-xs font-semibold rounded-xl"
@@ -502,6 +621,45 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
         </form>
       </div>
 
+      {/* ── BATCH ACTIONS TOOLBAR FOR ARCHIVE ────────────────── */}
+      {showArchived && selectedArchivedIds.size > 0 && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center space-x-2.5 text-xs text-red-950">
+            <div className="p-1.5 bg-red-100 text-red-700 rounded-lg">
+              <FolderArchive className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold text-sm block">
+                {selectedArchivedIds.size} రసీదులు ఎంపిక చేయబడ్డాయి ({selectedArchivedIds.size} Receipts Selected)
+              </span>
+              <span className="text-[11px] text-red-700">
+                You can permanently delete these receipts from database or restore them to active receipts.
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleBatchRestore}
+              disabled={isBatchActionLoading}
+              className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <ArchiveRestore className="w-3.5 h-3.5" />
+              <span>Restore Selected ({selectedArchivedIds.size})</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleBatchPermanentDelete}
+              disabled={isBatchActionLoading}
+              className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Permanently Delete ({selectedArchivedIds.size}) / శాశ్వతంగా తొలగించండి</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── RECEIPTS TABLE ───────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         {/* Table Subheader */}
@@ -511,7 +669,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
               {getSelectedFolderLabel()}
             </span>
             <span className="text-[11px] bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full font-semibold">
-              {receipts.length} {receipts.length === 1 ? 'receipt' : 'receipts'}
+              {sortedReceipts.length} {sortedReceipts.length === 1 ? 'receipt' : 'receipts'}
             </span>
           </div>
           {selectedFolder && (
@@ -526,7 +684,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
             <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-amber-600 border-t-transparent mb-2" />
             <p>Loading receipts...</p>
           </div>
-        ) : receipts.length === 0 ? (
+        ) : sortedReceipts.length === 0 ? (
           <div className="p-12 text-center text-gray-400 text-xs">
             <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
             <p className="font-semibold text-gray-600">No receipts found in this folder</p>
@@ -537,7 +695,35 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 uppercase text-[10px] tracking-wider font-semibold">
                 <tr>
-                  <th className="py-3 px-4">Receipt #</th>
+                  {showArchived && (
+                    <th className="py-3 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={sortedReceipts.length > 0 && selectedArchivedIds.size === sortedReceipts.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedArchivedIds(new Set(sortedReceipts.map((r) => r.id)));
+                          } else {
+                            setSelectedArchivedIds(new Set());
+                          }
+                        }}
+                        className="rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                        title="Select all archived receipts"
+                      />
+                    </th>
+                  )}
+                  <th
+                    className="py-3 px-4 cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                    onClick={() => setSortBy(prev => prev === 'receipt_no_asc' ? 'receipt_no_desc' : 'receipt_no_asc')}
+                    title="Click to sort by Receipt Number"
+                  >
+                    <div className="flex items-center space-x-1">
+                      <span>Receipt #</span>
+                      {sortBy === 'receipt_no_asc' && <ArrowUp className="w-3.5 h-3.5 text-amber-700" />}
+                      {sortBy === 'receipt_no_desc' && <ArrowDown className="w-3.5 h-3.5 text-amber-700" />}
+                      {sortBy !== 'receipt_no_asc' && sortBy !== 'receipt_no_desc' && <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />}
+                    </div>
+                  </th>
                   <th className="py-3 px-4">Book # (Folder)</th>
                   <th className="py-3 px-4">Devotee Name</th>
                   <th className="py-3 px-4">Gothram (గోత్రం)</th>
@@ -548,7 +734,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {receipts.map((r) => {
+                {sortedReceipts.map((r) => {
                   let badge = (
                     <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">
                       <Clock className="w-3 h-3" />
@@ -572,7 +758,32 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
                   }
 
                   return (
-                    <tr key={r.id} className="hover:bg-amber-50/40 transition-colors">
+                    <tr
+                      key={r.id}
+                      className={`hover:bg-amber-50/40 transition-colors ${
+                        selectedArchivedIds.has(r.id) ? 'bg-red-50/60' : ''
+                      }`}
+                    >
+                      {showArchived && (
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedArchivedIds.has(r.id)}
+                            onChange={(e) => {
+                              setSelectedArchivedIds((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) {
+                                  next.add(r.id);
+                                } else {
+                                  next.delete(r.id);
+                                }
+                                return next;
+                              });
+                            }}
+                            className="rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="py-3 px-4 font-mono font-bold text-gray-900">
                         #{r.receipt_no}
                       </td>
@@ -618,7 +829,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
                             <>
                               <button
                                 onClick={() => onSelectReceipt(r.id)}
-                                className="px-2.5 py-1 text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 inline-flex items-center space-x-1"
+                                className="px-2.5 py-1 text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 inline-flex items-center space-x-1 cursor-pointer"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                                 <span>Review</span>
@@ -626,7 +837,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
                               <button
                                 onClick={(e) => handleArchive(r, e)}
                                 disabled={archivingId === r.id}
-                                className="px-2 py-1 text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 inline-flex items-center space-x-1 disabled:opacity-50"
+                                className="px-2 py-1 text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 inline-flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
                                 title="Archive (soft delete) this receipt"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -634,15 +845,25 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
                             </>
                           )}
                           {r.is_archived && (
-                            <button
-                              onClick={(e) => handleRestore(r, e)}
-                              disabled={restoringId === r.id}
-                              className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 inline-flex items-center space-x-1 disabled:opacity-50"
-                              title="Restore this receipt from archive"
-                            >
-                              <ArchiveRestore className="w-3.5 h-3.5" />
-                              <span>Restore</span>
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => handleRestore(r, e)}
+                                disabled={restoringId === r.id || isBatchActionLoading}
+                                className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 inline-flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
+                                title="Restore this receipt from archive"
+                              >
+                                <ArchiveRestore className="w-3.5 h-3.5" />
+                                <span>Restore</span>
+                              </button>
+                              <button
+                                onClick={(e) => handleSinglePermanentDelete(r, e)}
+                                disabled={permanentDeletingId === r.id || isBatchActionLoading}
+                                className="px-2 py-1 text-xs font-semibold text-red-700 hover:text-red-900 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 inline-flex items-center space-x-1 disabled:opacity-50 cursor-pointer"
+                                title="Permanently delete from database"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>

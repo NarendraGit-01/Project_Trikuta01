@@ -48,6 +48,7 @@ def check_and_annotate_duplicate(result: PipelineResult, db: Optional[Session] =
         if clean_no:
             clean_numeric = clean_no.lstrip("0") or "0" if clean_no.isdigit() else clean_no
             q = db.query(Receipt).filter(
+                or_(Receipt.is_archived == False, Receipt.is_archived == None),
                 or_(
                     Receipt.receipt_no == clean_no,
                     Receipt.receipt_no == clean_numeric,
@@ -66,7 +67,10 @@ def check_and_annotate_duplicate(result: PipelineResult, db: Optional[Session] =
         if not img_hash and isinstance(result.intermediate_passes, dict):
             img_hash = result.intermediate_passes.get("image_hash")
         if not existing and img_hash:
-            existing = db.query(Receipt).filter(Receipt.image_hash == img_hash).first()
+            existing = db.query(Receipt).filter(
+                Receipt.image_hash == img_hash,
+                or_(Receipt.is_archived == False, Receipt.is_archived == None)
+            ).first()
 
         if existing:
             result.is_duplicate = True
@@ -255,12 +259,15 @@ async def process_uploaded_receipt(
 
     # Compute SHA-256 hash for duplicate detection
     img_hash = hashlib.sha256(contents).hexdigest()
-    # Check if an identical image already exists
+    # Check if an identical active image already exists
     existing = None
     try:
         db = SessionLocal()
         try:
-            existing = db.query(Receipt).filter(Receipt.image_hash == img_hash).first()
+            existing = db.query(Receipt).filter(
+                Receipt.image_hash == img_hash,
+                or_(Receipt.is_archived == False, Receipt.is_archived == None)
+            ).first()
         finally:
             db.close()
     except Exception as db_err:
@@ -646,9 +653,12 @@ def process_staged_receipt(
                 intermediate_passes={"staged_id": staged_id},
             )
 
-        # Fast duplicate check by image_hash before running expensive LLM call
+        # Fast duplicate check by image_hash before running expensive LLM call (ignore archived)
         if item.image_hash:
-            existing = db.query(Receipt).filter(Receipt.image_hash == item.image_hash).first()
+            existing = db.query(Receipt).filter(
+                Receipt.image_hash == item.image_hash,
+                or_(Receipt.is_archived == False, Receipt.is_archived == None)
+            ).first()
             if existing:
                 return PipelineResult(
                     receipt_no=existing.receipt_no,

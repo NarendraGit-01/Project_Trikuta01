@@ -312,8 +312,11 @@ def check_duplicate_receipt(
     year: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """Check if receipt_no already exists based on uniqueness policy."""
-    query = db.query(Receipt).filter(Receipt.receipt_no == receipt_no.strip())
+    """Check if receipt_no already exists based on uniqueness policy (ignores archived receipts)."""
+    query = db.query(Receipt).filter(
+        Receipt.receipt_no == receipt_no.strip(),
+        or_(Receipt.is_archived == False, Receipt.is_archived == None)
+    )
     if settings.RECEIPT_UNIQUENESS_POLICY == "yearly" and year:
         query = query.filter(Receipt.receipt_year == year)
 
@@ -342,9 +345,12 @@ def create_receipt(
         except Exception:
             pass
 
-        # Check duplicate detection
+        # Check duplicate detection (ignore archived records so re-uploading an archived receipt succeeds)
         clean_receipt_no = receipt_in.receipt_no.strip()
-        dup_query = db.query(Receipt).filter(Receipt.receipt_no == clean_receipt_no)
+        dup_query = db.query(Receipt).filter(
+            Receipt.receipt_no == clean_receipt_no,
+            or_(Receipt.is_archived == False, Receipt.is_archived == None)
+        )
         if settings.RECEIPT_UNIQUENESS_POLICY == "yearly" and receipt_in.receipt_year:
             dup_query = dup_query.filter(Receipt.receipt_year == receipt_in.receipt_year)
         
@@ -639,6 +645,88 @@ def restore_receipt(
         "receipt_id": receipt.id,
         "receipt_no": receipt.receipt_no,
         "message": f"Receipt #{receipt.receipt_no} restored successfully."
+    }
+
+
+class BatchDeletePermanentRequest(BaseModel):
+    receipt_ids: List[int]
+
+
+@router.post("/batch-delete-permanent")
+def batch_delete_receipts_permanent(
+    req: BatchDeletePermanentRequest,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """Permanently delete multiple archived receipts from database and storage."""
+    if not req.receipt_ids:
+        return {"status": "ok", "deleted_count": 0}
+
+    receipts = db.query(Receipt).filter(Receipt.id.in_(req.receipt_ids)).all()
+    storage = get_storage()
+    deleted_count = 0
+    deleted_numbers = []
+
+    for r in receipts:
+        deleted_numbers.append(r.receipt_no or str(r.id))
+        if r.original_image_path:
+            try:
+                storage.delete(r.original_image_path)
+            except Exception:
+                pass
+        db.delete(r)
+        deleted_count += 1
+
+    if deleted_count > 0:
+        audit = AuditLog(
+            user_id=current_user.id if current_user else None,
+            action="PERMANENT_DELETE_RECEIPTS",
+            entity="Receipt",
+            new_value=json.dumps({"receipt_ids": req.receipt_ids, "receipt_nos": deleted_numbers, "count": deleted_count}),
+        )
+        db.add(audit)
+        db.commit()
+
+    return {
+        "status": "deleted_permanently",
+        "deleted_count": deleted_count,
+        "message": f"Successfully deleted {deleted_count} receipts permanently."
+    }
+
+
+@router.delete("/{receipt_id}/permanent")
+def delete_receipt_permanent(
+    receipt_id: int,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """Permanently delete a single archived receipt from database and storage."""
+    receipt = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    if not receipt:
+        return {"status": "already_deleted", "receipt_id": receipt_id}
+
+    storage = get_storage()
+    if receipt.original_image_path:
+        try:
+            storage.delete(receipt.original_image_path)
+        except Exception:
+            pass
+
+    r_no = receipt.receipt_no
+    db.delete(receipt)
+    audit = AuditLog(
+        user_id=current_user.id if current_user else None,
+        action="PERMANENT_DELETE_RECEIPT",
+        entity="Receipt",
+        entity_id=receipt_id,
+        new_value=json.dumps({"receipt_no": r_no, "action": "permanently_deleted"}),
+    )
+    db.add(audit)
+    db.commit()
+    return {
+        "status": "deleted_permanently",
+        "receipt_id": receipt_id,
+        "message": f"Receipt #{r_no} deleted permanently."
     }
 
 

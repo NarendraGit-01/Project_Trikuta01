@@ -582,6 +582,30 @@ export async function confirmReceipt(id: number): Promise<Receipt> {
   return res.json();
 }
 
+export async function deleteReceiptPermanent(receiptId: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/receipts/${receiptId}/permanent`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to delete receipt permanently' }));
+    throw new Error(err.detail || `Failed to delete receipt permanently (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
+export async function batchDeleteReceiptsPermanent(receiptIds: number[]): Promise<{ status: string; deleted_count: number; message: string }> {
+  const res = await fetch(`${API_BASE}/receipts/batch-delete-permanent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ receipt_ids: receiptIds }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to permanently delete receipts' }));
+    throw new Error(err.detail || `Failed to permanently delete receipts (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
 export async function saveIncompleteReceipt(id: number): Promise<Receipt> {
   const res = await fetch(`${API_BASE}/receipts/${id}/save-incomplete`, {
     method: 'POST',
