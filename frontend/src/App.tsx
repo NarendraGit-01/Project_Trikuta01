@@ -14,7 +14,7 @@ import { deleteStoredReceipt } from './services/receiptStore';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredAuth());
-  const [currentTab, setCurrentTab] = useState<string>('books');
+  const [currentTab, setCurrentTab] = useState<string>('scan');
   const [activeModel, setActiveModel] = useState<string>('gemini-3.5-flash-lite');
 
   // Global Year Selector (defaults to 2026 or persisted selection)
@@ -177,8 +177,6 @@ export const App: React.FC = () => {
           logoutUser();
           setCurrentUser(null);
         }}
-        selectedYear={selectedYear}
-        onSelectYear={handleSelectYear}
       />
 
       {/* Global Success Banner */}
@@ -191,18 +189,6 @@ export const App: React.FC = () => {
 
       {/* Main Tab Content */}
       <main className="flex-1">
-        {currentTab === 'books' && (
-          <ErrorBoundary fallbackTitle="Books View Encountered an Error">
-            <BooksPage
-              selectedYear={selectedYear}
-              onSelectReceipt={handleSelectReceiptFromList}
-              onNewScanForBook={(_bookNum) => {
-                setCurrentTab('scan');
-              }}
-            />
-          </ErrorBoundary>
-        )}
-
         {currentTab === 'scan' && (
           <ErrorBoundary fallbackTitle="Scanner Encountered an Error" onReset={() => setCurrentTab('scan')}>
             <ScanPage
@@ -242,21 +228,35 @@ export const App: React.FC = () => {
           <ErrorBoundary fallbackTitle="Receipts View Encountered an Error">
             <ReceiptListPage
               selectedYear={selectedYear}
+              onSelectYear={handleSelectYear}
               onSelectReceipt={handleSelectReceiptFromList}
               onNewScan={() => setCurrentTab('scan')}
             />
           </ErrorBoundary>
         )}
 
+        {currentTab === 'books' && (
+          <ErrorBoundary fallbackTitle="Books View Encountered an Error">
+            <BooksPage
+              selectedYear={selectedYear}
+              onSelectYear={handleSelectYear}
+              onSelectReceipt={handleSelectReceiptFromList}
+              onNewScanForBook={(_bookNum) => {
+                setCurrentTab('scan');
+              }}
+            />
+          </ErrorBoundary>
+        )}
+
         {currentTab === 'pooja' && (
           <ErrorBoundary fallbackTitle="Sankalpam View Encountered an Error">
-            <PoojaListPage selectedYear={selectedYear} />
+            <PoojaListPage selectedYear={selectedYear} onSelectYear={handleSelectYear} />
           </ErrorBoundary>
         )}
 
         {currentTab === 'dispatch' && (
           <ErrorBoundary fallbackTitle="Dispatch View Encountered an Error">
-            <DispatchPage selectedYear={selectedYear} />
+            <DispatchPage selectedYear={selectedYear} onSelectYear={handleSelectYear} />
           </ErrorBoundary>
         )}
       </main>

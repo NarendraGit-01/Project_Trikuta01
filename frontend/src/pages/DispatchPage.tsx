@@ -5,9 +5,10 @@ import { Receipt } from '../types';
 
 interface DispatchPageProps {
   selectedYear?: number | null;
+  onSelectYear?: (year: number | null) => void;
 }
 
-export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear }) => {
+export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear, onSelectYear }) => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedBook, setSelectedBook] = useState<string>('ALL');
@@ -126,6 +127,23 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear }) => {
                 </>
               )}
             </button>
+
+            {/* Compact English Year Filter */}
+            <div className="flex items-center space-x-1.5 bg-white border border-gray-300 rounded-xl px-2.5 py-1.5 shadow-xs text-xs">
+              <span className="font-semibold text-gray-600 text-[11px]">Year:</span>
+              <select
+                value={selectedYear ?? ''}
+                onChange={(e) => onSelectYear && onSelectYear(e.target.value ? Number(e.target.value) : null)}
+                className="font-mono font-bold text-gray-900 bg-transparent focus:outline-none cursor-pointer text-xs"
+                title="Filter Dispatch by Year"
+              >
+                <option value="">All</option>
+                <option value="2027">2027</option>
+                <option value="2026">2026</option>
+                <option value="2025">2025</option>
+                <option value="2024">2024</option>
+              </select>
+            </div>
 
             <button
               onClick={handlePrintLabels}

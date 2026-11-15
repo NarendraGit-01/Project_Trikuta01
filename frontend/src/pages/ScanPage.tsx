@@ -738,11 +738,14 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 
   /* ── 8. RUN BATCH OCR (ALL PENDING IN QUEUE) ─────────────── */
   const handleRunBatchOCR = async () => {
-    const pendingItems = filteredReceipts.filter(
+    let pendingItems = filteredReceipts.filter(
       (r) => r.status === 'PENDING' || r.status === 'ERROR'
     );
+    if (pendingItems.length === 0 && filteredReceipts.length > 0) {
+      pendingItems = filteredReceipts;
+    }
     if (pendingItems.length === 0) {
-      alert('No pending receipts to process in the current view.');
+      alert('No receipts loaded to process.');
       return;
     }
 
@@ -944,21 +947,8 @@ export const ScanPage: React.FC<ScanPageProps> = ({
             </div>
           </div>
 
-          {/* Action Tools & Book Assignation */}
+          {/* Action Tools */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Active Book Assignment Input */}
-            <div className="flex items-center space-x-1.5 bg-gray-50 border border-gray-300 rounded-xl px-2.5 py-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-amber-700" />
-              <label className="text-[11px] font-bold text-gray-600 uppercase">Book #:</label>
-              <input
-                type="text"
-                value={activeBookNumber}
-                onChange={(e) => setActiveBookNumber(e.target.value)}
-                placeholder="e.g. 01 or B-12"
-                className="w-24 text-xs font-mono font-bold text-gray-900 bg-white border border-gray-200 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-            </div>
-
             {/* Hidden File Input with MULTIPLE=true */}
             <input
               ref={fileInputRef}
@@ -981,14 +971,16 @@ export const ScanPage: React.FC<ScanPageProps> = ({
             {/* Batch OCR Execution */}
             <button
               onClick={handleRunBatchOCR}
-              disabled={isBatchProcessing || isProcessingSingle || stats.pending === 0}
+              disabled={isBatchProcessing || isProcessingSingle || receipts.length === 0}
               className="flex items-center space-x-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
             >
               <Zap className="w-3.5 h-3.5 fill-emerald-200" />
               <span>
                 {isBatchProcessing
                   ? `Processing ${batchProgress.current}/${batchProgress.total}...`
-                  : `Run OCR on All Pending (${stats.pending})`}
+                  : stats.pending > 0
+                  ? `Run OCR on All Pending (${stats.pending})`
+                  : `Run OCR on All (${receipts.length})`}
               </span>
             </button>
 

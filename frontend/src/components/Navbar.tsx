@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Camera, FileText, Flame, Package, Folder, Sparkles, CheckCircle2, LogOut, User, KeyRound, X, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, FileText, Flame, Package, Folder, Sparkles, LogOut, User, KeyRound, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { AuthUser, changePassword } from '../services/api';
 
 interface NavbarProps {
@@ -8,8 +8,6 @@ interface NavbarProps {
   activeModel: string;
   currentUser?: AuthUser | null;
   onLogout?: () => void;
-  selectedYear: number | null;
-  onSelectYear: (year: number | null) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -18,16 +16,27 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeModel,
   currentUser,
   onLogout,
-  selectedYear,
-  onSelectYear,
 }) => {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
   const [changeSuccess, setChangeSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleChangePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,40 +69,46 @@ export const Navbar: React.FC<NavbarProps> = ({
       setIsChangingPassword(false);
     }
   };
+
+  // Reordered: Scan & OCR is 1st, Receipts is 2nd, Books is 3rd
   const tabs = [
-    { id: 'books', label: 'Books', telugu: 'పుస్తకాలు', icon: Folder },
     { id: 'scan', label: 'Scan & OCR', telugu: 'రసీదు స్కాన్', icon: Camera },
     { id: 'receipts', label: 'Receipts', telugu: 'రసీదుల జాబితా', icon: FileText },
+    { id: 'books', label: 'Books', telugu: 'పుస్తకాలు', icon: Folder },
     { id: 'pooja', label: 'Sankalpam', telugu: 'పూజా సంకల్పం', icon: Flame },
     { id: 'dispatch', label: 'Dispatch', telugu: 'ప్రసాదం పంపిణీ', icon: Package },
   ];
 
   return (
-    <header className="bg-gradient-to-r from-amber-800 via-amber-700 to-red-800 text-white shadow-lg sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
-          {/* Temple Crest & Brand */}
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => onSelectTab('scan')}>
-            <div className="w-12 h-12 rounded-full bg-amber-100/20 border-2 border-amber-300 flex items-center justify-center shadow-inner text-amber-200">
-              <span className="text-2xl font-bold font-serif">🕉️</span>
+    <header className="bg-gradient-to-r from-amber-900 via-amber-800 to-red-900 text-white shadow-lg sticky top-0 z-50">
+      <div className="w-full max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-20 gap-4">
+          {/* ── 1. Temple Crest & App Brand (Organized cleanly on left) ── */}
+          <div
+            className="flex items-center space-x-3 cursor-pointer flex-shrink-0 select-none group"
+            onClick={() => onSelectTab('scan')}
+            title="Sri Trikoteswara Swamy Temple OCR System"
+          >
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-amber-100/15 border-2 border-amber-300 flex items-center justify-center shadow-inner text-amber-200 flex-shrink-0 group-hover:bg-amber-100/25 transition-colors">
+              <span className="text-xl sm:text-2xl font-serif">🕉️</span>
             </div>
-            <div>
+            <div className="flex flex-col justify-center">
               <div className="flex items-center space-x-2">
-                <h1 className="text-lg font-bold tracking-tight text-white font-telugu">
+                <h1 className="text-base sm:text-lg lg:text-xl font-bold tracking-tight text-white font-telugu whitespace-nowrap leading-tight">
                   శ్రీ త్రికోటేశ్వర స్వామి వారి దేవస్థానము
                 </h1>
-                <span className="text-xs bg-amber-400/20 border border-amber-300/40 text-amber-200 px-2 py-0.5 rounded-full font-mono font-medium">
+                <span className="text-[10px] bg-amber-400/25 border border-amber-300/40 text-amber-200 px-2 py-0.5 rounded-full font-mono font-semibold whitespace-nowrap">
                   కోటప్పకొండ
                 </span>
               </div>
-              <p className="text-xs text-amber-100/80 font-sans tracking-wide">
-                Sri Trikoteswara Swamy Temple • Receipt OCR & Management System
+              <p className="text-[11px] sm:text-xs text-amber-100/85 font-sans tracking-wide whitespace-nowrap leading-tight mt-0.5">
+                Sri Trikoteswara Swamy Devasthanam • Receipt OCR System
               </p>
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="hidden md:flex space-x-1">
+          {/* ── 2. Navigation Tabs (Scan 1st, Receipts 2nd, Books 3rd) ── */}
+          <nav className="hidden md:flex items-center space-x-1 lg:space-x-1.5 flex-shrink-0">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = currentTab === tab.id;
@@ -101,10 +116,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   key={tab.id}
                   onClick={() => onSelectTab(tab.id)}
-                  className={`flex flex-col items-center px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+                  className={`flex flex-col items-center px-3.5 lg:px-4 py-2 rounded-xl text-xs font-medium transition-all ${
                     isActive
                       ? 'bg-white/20 text-white shadow-sm border-b-2 border-amber-300 font-semibold'
-                      : 'text-amber-100/90 hover:bg-white/10 hover:text-white'
+                      : 'text-amber-100/85 hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center space-x-1.5">
@@ -117,90 +132,78 @@ export const Navbar: React.FC<NavbarProps> = ({
             })}
           </nav>
 
-          {/* Global Year Selector & Model & Auth */}
-          <div className="flex items-center space-x-2.5">
-            {/* Year Selector */}
-            <div className="flex items-center space-x-1.5 bg-black/30 hover:bg-black/45 px-2.5 py-1.5 rounded-lg border border-amber-400/40 text-xs shadow-inner">
-              <Calendar className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
-              <span className="text-amber-200 font-semibold text-[11px] hidden xl:inline">సంవత్సరం:</span>
-              <select
-                value={selectedYear ?? ''}
-                onChange={(e) => onSelectYear(e.target.value ? Number(e.target.value) : null)}
-                className="bg-transparent text-amber-100 font-bold font-mono text-xs focus:outline-none cursor-pointer"
-                title="Global Year Filter - filters all books, receipts, and scans"
-              >
-                <option value="" className="text-gray-900 bg-white">All Years (అన్నీ)</option>
-                <option value="2027" className="text-gray-900 bg-white">2027</option>
-                <option value="2026" className="text-gray-900 bg-white">2026</option>
-                <option value="2025" className="text-gray-900 bg-white">2025</option>
-                <option value="2024" className="text-gray-900 bg-white">2024</option>
-              </select>
-            </div>
-
-            <div className="hidden lg:flex items-center space-x-2 bg-black/25 px-3 py-1.5 rounded-full border border-amber-400/30 text-xs">
+          {/* ── 3. Right Controls: Model indicator + User Profile Icon ── */}
+          <div className="flex items-center space-x-3 flex-shrink-0">
+            {/* AI Model Badge */}
+            <div className="hidden xl:flex items-center space-x-2 bg-black/25 px-3 py-1.5 rounded-full border border-amber-400/30 text-xs shadow-inner">
               <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
               <span className="text-amber-100 font-mono text-[11px]">{activeModel}</span>
               <span className="w-2 h-2 rounded-full bg-emerald-400" title="Connected" />
             </div>
-            {currentUser ? (
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1.5 bg-amber-900/70 px-2.5 py-1 rounded-lg text-xs border border-amber-500/40">
-                  <User className="w-3.5 h-3.5 text-amber-300" />
-                  <span className="text-amber-100 font-medium font-mono">
-                    {currentUser.username}
-                  </span>
-                  <span className="text-[10px] bg-amber-400/20 text-amber-200 px-1 py-0.2 rounded font-bold uppercase">
-                    {currentUser.role}
-                  </span>
-                </div>
 
+            {/* User Icon with Dropdown Menu Popover */}
+            {currentUser ? (
+              <div className="relative" ref={userMenuRef}>
                 <button
                   type="button"
-                  onClick={() => setShowPasswordModal(true)}
-                  title="Change Password (పాస్‌వర్డ్ మార్చండి)"
-                  className="flex items-center space-x-1 px-2.5 py-1 bg-amber-900/60 hover:bg-amber-800 text-amber-200 hover:text-white rounded-lg text-xs border border-amber-500/40 transition-colors"
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="w-10 h-10 rounded-full bg-amber-950/70 hover:bg-amber-900 border-2 border-amber-400/50 hover:border-amber-300 flex items-center justify-center text-amber-200 hover:text-white shadow-md transition-all focus:outline-none relative group"
+                  title="Account Settings & Profile"
                 >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Password</span>
+                  <User className="w-5 h-5 text-amber-200 group-hover:scale-105 transition-transform" />
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-amber-900" />
                 </button>
 
-                {onLogout && (
-                  <button
-                    type="button"
-                    onClick={onLogout}
-                    title="Log Out (నిష్క్రమించు)"
-                    className="flex items-center space-x-1 px-2.5 py-1 bg-red-950/60 hover:bg-red-900 text-red-200 hover:text-white rounded-lg text-xs border border-red-500/30 transition-colors"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Logout</span>
-                  </button>
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2.5 w-64 bg-white rounded-2xl shadow-2xl border border-gray-200 py-2.5 z-50 text-gray-900 animate-in fade-in slide-in-from-top-2">
+                    <div className="px-4 py-2.5 border-b border-gray-100">
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Signed in as</div>
+                      <div className="font-semibold text-xs text-gray-900 truncate mt-0.5" title={currentUser.username}>
+                        {currentUser.username}
+                      </div>
+                      <div className="inline-block mt-1 text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded uppercase">
+                        {currentUser.role}
+                      </div>
+                    </div>
+                    <div className="py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          setShowPasswordModal(true);
+                        }}
+                        className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-amber-50 hover:text-amber-900 flex items-center space-x-2 transition-colors"
+                      >
+                        <KeyRound className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Change Password (పాస్‌వర్డ్ మార్చండి)</span>
+                      </button>
+                      {onLogout && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            onLogout();
+                          }}
+                          className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2 transition-colors border-t border-gray-100 mt-1"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Log Out (నిష్క్రమించు)</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             ) : (
-              <div className="flex items-center space-x-1.5 bg-amber-900/60 px-2.5 py-1 rounded-md text-xs border border-amber-500/30">
-                <span className="text-amber-200 font-medium">Staff</span>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="w-9 h-9 rounded-full bg-amber-900/60 border border-amber-500/40 flex items-center justify-center text-amber-200 text-xs">
+                <User className="w-4 h-4 text-amber-300" />
               </div>
             )}
           </div>
         </div>
 
         {/* Mobile Navigation bar */}
-        <div className="flex md:hidden overflow-x-auto py-2 space-x-2 border-t border-amber-600/40 items-center">
-          <div className="flex items-center space-x-1 bg-black/30 px-2 py-1 rounded-md text-xs border border-amber-400/40 flex-shrink-0">
-            <Calendar className="w-3 h-3 text-amber-300" />
-            <select
-              value={selectedYear ?? ''}
-              onChange={(e) => onSelectYear(e.target.value ? Number(e.target.value) : null)}
-              className="bg-transparent text-amber-100 font-bold font-mono text-[11px] focus:outline-none"
-            >
-              <option value="" className="text-gray-900 bg-white">All</option>
-              <option value="2027" className="text-gray-900 bg-white">2027</option>
-              <option value="2026" className="text-gray-900 bg-white">2026</option>
-              <option value="2025" className="text-gray-900 bg-white">2025</option>
-              <option value="2024" className="text-gray-900 bg-white">2024</option>
-            </select>
-          </div>
+        <div className="flex md:hidden overflow-x-auto py-2 space-x-2 border-t border-amber-600/40">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
@@ -208,7 +211,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 key={tab.id}
                 onClick={() => onSelectTab(tab.id)}
-                className={`flex items-center space-x-1 px-3 py-1.5 rounded-md text-xs whitespace-nowrap ${
+                className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${
                   isActive ? 'bg-white/20 text-white font-bold' : 'text-amber-100 hover:bg-white/10'
                 }`}
               >
@@ -234,75 +237,75 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setShowPasswordModal(false)}
                 className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {changeError && (
-              <div className="mb-4 p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                <span>{changeError}</span>
-              </div>
-            )}
-
-            {changeSuccess && (
-              <div className="mb-4 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{changeSuccess}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5">
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">ప్రస్తుత పాస్‌వర్డ్ (Current Password)</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Current Password:</label>
                 <input
                   type="password"
+                  required
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Enter current password"
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 outline-none focus:border-amber-600 focus:bg-white"
-                  required
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">కొత్త పాస్‌వర్డ్ (New Password)</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">New Password:</label>
                 <input
                   type="password"
+                  required
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 outline-none focus:border-amber-600 focus:bg-white"
-                  required
+                  placeholder="Enter new password (min 6 chars)"
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">పాస్‌వర్డ్ నిర్ధారణ (Confirm New Password)</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Confirm New Password:</label>
                 <input
                   type="password"
+                  required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter new password"
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-xl text-xs text-gray-900 outline-none focus:border-amber-600 focus:bg-white"
-                  required
+                  placeholder="Confirm new password"
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100">
+              {changeError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center space-x-2 text-xs text-red-700">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                  <span>{changeError}</span>
+                </div>
+              )}
+
+              {changeSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-2 text-xs text-emerald-800">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span>{changeSuccess}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setShowPasswordModal(false)}
-                  className="px-3 py-2 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  className="px-3.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isChangingPassword}
-                  className="px-4 py-2 bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow"
+                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs rounded-xl shadow transition-colors disabled:opacity-50"
                 >
-                  {isChangingPassword ? 'Updating...' : 'పాస్‌వర్డ్ మార్చండి'}
+                  {isChangingPassword ? 'Updating...' : 'Update Password'}
                 </button>
               </div>
             </form>

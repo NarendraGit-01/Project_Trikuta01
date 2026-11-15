@@ -36,11 +36,12 @@ async function restoreReceipt(id: number): Promise<void> {
 
 interface ReceiptListPageProps {
   selectedYear?: number | null;
+  onSelectYear?: (year: number | null) => void;
   onSelectReceipt: (receiptId: number) => void;
   onNewScan: () => void;
 }
 
-export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, onSelectReceipt, onNewScan }) => {
+export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, onSelectYear, onSelectReceipt, onNewScan }) => {
   const [receipts, setReceipts] = useState<ReceiptListItem[]>([]);
   const [booksSummary, setBooksSummary] = useState<BooksSummaryResponse | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string>(''); // '' = All, or book_number, or '__UNASSIGNED__'
@@ -189,7 +190,24 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, 
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Compact English Year Filter */}
+          <div className="flex items-center space-x-1.5 bg-white border border-gray-300 rounded-xl px-2.5 py-1.5 shadow-xs text-xs">
+            <span className="font-semibold text-gray-600 text-[11px]">Year:</span>
+            <select
+              value={selectedYear ?? ''}
+              onChange={(e) => onSelectYear && onSelectYear(e.target.value ? Number(e.target.value) : null)}
+              className="font-mono font-bold text-gray-900 bg-transparent focus:outline-none cursor-pointer text-xs"
+              title="Filter receipts by Year"
+            >
+              <option value="">All Years</option>
+              <option value="2027">2027</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
+
           <button
             onClick={() => setShowArchived(a => !a)}
             className={`px-3.5 py-2 font-bold text-xs rounded-xl shadow transition-colors flex items-center space-x-1.5 ${

@@ -32,12 +32,14 @@ import { BooksSummaryResponse, BookFolderItem, ReceiptListItem, Receipt } from '
 
 interface BooksPageProps {
   selectedYear: number | null;
+  onSelectYear?: (year: number | null) => void;
   onSelectReceipt: (receiptId: number) => void;
   onNewScanForBook: (bookNumber: string) => void;
 }
 
 export const BooksPage: React.FC<BooksPageProps> = ({
   selectedYear,
+  onSelectYear,
   onSelectReceipt,
   onNewScanForBook,
 }) => {
@@ -347,6 +349,23 @@ export const BooksPage: React.FC<BooksPageProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* Compact English Year Filter */}
+          <div className="flex items-center space-x-1.5 bg-white border border-gray-300 rounded-xl px-2.5 py-1.5 shadow-xs text-xs">
+            <span className="font-semibold text-gray-600 text-[11px]">Year:</span>
+            <select
+              value={selectedYear ?? ''}
+              onChange={(e) => onSelectYear && onSelectYear(e.target.value ? Number(e.target.value) : null)}
+              className="font-mono font-bold text-gray-900 bg-transparent focus:outline-none cursor-pointer text-xs"
+              title="Filter books by Year"
+            >
+              <option value="">All Years</option>
+              <option value="2027">2027</option>
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
+
           <button
             onClick={() => handleExportAllExcel('')}
             className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center space-x-1.5"
