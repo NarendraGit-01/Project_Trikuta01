@@ -811,7 +811,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           <button
             onClick={() => handleSaveReceipt('INCOMPLETE')}
             disabled={isSaving}
-            className="px-4 py-2 text-xs font-semibold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors"
+            className="px-4 py-2 text-xs font-semibold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors disabled:opacity-50"
           >
             Save as Incomplete
           </button>
@@ -827,14 +827,47 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             <button
               onClick={() => handleSaveReceipt('CONFIRMED')}
               disabled={isSaving}
-              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow transition-colors"
+              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow transition-colors disabled:opacity-75 disabled:cursor-wait"
             >
-              <CheckCircle className="w-4 h-4" />
-              <span>Confirm & Finalize Record</span>
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>భద్రపరచబడుతోంది (Saving...)...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Confirm & Finalize Record</span>
+                </>
+              )}
             </button>
           )}
         </div>
       </div>
+
+      {/* ── Saving In-Progress Feedback Banner ──────────── */}
+      {isSaving && (
+        <div className="mb-5 p-4 bg-gradient-to-r from-emerald-700 via-emerald-800 to-amber-900 text-white rounded-2xl shadow-xl flex items-center justify-between text-xs font-semibold animate-pulse border-2 border-emerald-400">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+            <div>
+              <p className="font-bold text-sm flex items-center space-x-2">
+                <span className="font-telugu">రశీదు దేవస్థానం డేటాబేస్‌లో భద్రపరచబడుతోంది...</span>
+                <span className="font-mono text-amber-200">
+                  (Saving Receipt #{receiptNo || result.receipt_no})
+                </span>
+              </p>
+              <p className="text-[11px] text-emerald-100 mt-0.5">
+                Saving devotee records, updating pooja sankalpam books, and synchronizing to temple database. Please wait...
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 bg-white/20 rounded-xl text-[11px] font-mono">
+            <span>🕉️</span>
+            <span>Syncing Database...</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Duplicate Receipt Alert Banner ─────────────── */}
       {result.is_duplicate && !existingReceiptId && (

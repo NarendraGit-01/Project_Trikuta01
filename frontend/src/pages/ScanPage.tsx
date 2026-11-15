@@ -152,6 +152,15 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
 
+  // Auto-dismiss duplicate notification after 6 seconds
+  useEffect(() => {
+    if (!duplicateNotice) return;
+    const timer = setTimeout(() => {
+      setDuplicateNotice(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [duplicateNotice]);
+
   // Zoom & Pan states for Image Preview
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
