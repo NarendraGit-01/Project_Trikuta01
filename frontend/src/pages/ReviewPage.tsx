@@ -18,7 +18,8 @@ import {
   Upload,
 } from 'lucide-react';
 import { PipelineResult, Person, Phone } from '../types';
-import { createReceipt, updateReceipt, searchGothrams, resolvePincode, PincodeDetails } from '../services/api';
+import { createReceipt, updateReceipt, searchGothrams, resolvePincode, PincodeDetails, deleteStagedReceipt } from '../services/api';
+import { deleteStoredReceipt, getAllStoredReceipts } from '../services/receiptStore';
 import {
   isTeluguScript,
   transliterateTeluguToEnglish,
@@ -32,6 +33,7 @@ interface ReviewPageProps {
   existingReceiptId?: number | null;
   onBackToScan: () => void;
   onSaved: (receiptId: number) => void;
+  onNextReview?: (result: PipelineResult, imageUrl: string, filename?: string, storedReceiptId?: string) => void;
 }
 
 export const ReviewPage: React.FC<ReviewPageProps> = ({
@@ -41,6 +43,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   existingReceiptId,
   onBackToScan,
   onSaved,
+  onNextReview,
 }) => {
   const [currentImgSrc, setCurrentImgSrc] = useState(imageUrl);
   const [imgLoadFailed, setImgLoadFailed] = useState(false);
@@ -522,6 +525,28 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   };
 
   /* ── Save Handler ──────────────────────────────── */
+  const handleDismissDuplicate = async () => {
+    const stagedId = (result.intermediate_passes as any)?.staged_id;
+    if (stagedId) {
+      await deleteStagedReceipt(stagedId).catch(() => {});
+    }
+
+    const allStored = await getAllStoredReceipts().catch(() => []);
+    const nextItem = allStored.find(
+      (r) => r.status === 'SUCCESS' && r.result && !r.result.is_duplicate && !r.reviewed
+    );
+
+    if (nextItem && nextItem.result && onNextReview) {
+      const nextUrl =
+        nextItem.previewUrl ||
+        nextItem.imageUrl ||
+        (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
+      onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
+    } else {
+      onBackToScan();
+    }
+  };
+
   const handleSaveReceipt = async (targetStatus: 'CONFIRMED' | 'INCOMPLETE') => {
     setIsSaving(true);
     setSaveError(null);
@@ -689,12 +714,11 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           </button>
           {result.is_duplicate && !existingReceiptId ? (
             <button
-              disabled
-              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-red-100 text-red-700 border border-red-300 shadow-xs cursor-not-allowed opacity-80"
-              title="Duplicate receipt already exists in database"
+              onClick={handleDismissDuplicate}
+              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-amber-700 hover:bg-amber-800 text-white shadow transition-colors"
+              title="Remove duplicate and proceed to next review or scan screen"
             >
-              <AlertTriangle className="w-4 h-4 text-red-600" />
-              <span>Already Stored • Re-ingestion Blocked</span>
+              <span>Next Review / Scan Screen →</span>
             </button>
           ) : (
             <button
@@ -713,7 +737,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       {result.is_duplicate && !existingReceiptId && (
         <div className="mb-4 p-4 bg-red-50 border-2 border-red-300 rounded-2xl flex items-start space-x-3 text-red-900 shadow-xs">
           <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-          <div className="text-xs">
+          <div className="text-xs flex-1">
             <p className="font-bold text-sm text-red-800">
               రశీదు ఇప్పటికే నిల్వ చేయబడింది (Receipt Already Processed &amp; Stored)
             </p>
@@ -721,8 +745,17 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
               Receipt <strong>#{result.receipt_no}</strong> is already stored in the temple database as Record <strong>#{result.duplicate_receipt_id}</strong> (Status: <strong>{result.duplicate_status || 'CONFIRMED'}</strong>).
             </p>
             <p className="mt-1 text-red-700 font-semibold">
-              Duplicate re-ingestion is blocked to prevent data corruption. To edit or review the existing record, open it directly from the Receipts list.
+              This duplicate entry has been removed from OCR. Click below to proceed to the next pending review or return to the scan screen.
             </p>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={handleDismissDuplicate}
+                className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl text-xs font-bold shadow transition-colors flex items-center space-x-1.5"
+              >
+                <span>Proceed to Next Review or OCR Scan Screen →</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

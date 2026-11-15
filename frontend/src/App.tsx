@@ -209,6 +209,9 @@ export const App: React.FC = () => {
                 existingReceiptId={activeReceiptId}
                 onBackToScan={() => setCurrentTab('scan')}
                 onSaved={handleSavedReceipt}
+                onNextReview={(nextResult, nextImageUrl, nextFilename, nextStoredId) => {
+                  handleOCRComplete(nextResult, nextImageUrl, nextFilename, nextStoredId);
+                }}
               />
             </ErrorBoundary>
           ) : (

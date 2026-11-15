@@ -710,6 +710,46 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       clearInterval(timer);
       setIsProcessingSingle(false);
 
+      if (result.is_duplicate) {
+        // 1. Automatically purge duplicate receipt from cloud staging & local store
+        if (item.stagedId) {
+          await deleteStagedReceipt(item.stagedId).catch(() => {});
+        }
+        await deleteStoredReceipt(item.id).catch(() => {});
+
+        // 2. Remove duplicate from current queue state
+        const remaining = receipts.filter((r) => r.id !== item.id);
+        setReceipts(remaining);
+
+        // 3. User feedback banner
+        const dupNotice = `రశీదు #${result.receipt_no || 'Duplicate'} ఇప్పటికే నిల్వ చేయబడింది (Receipt #${result.receipt_no} already exists in database as Record #${result.duplicate_receipt_id}, Status: ${result.duplicate_status || 'CONFIRMED'}). Entry removed from OCR queue.`;
+        setErrorNotice(dupNotice);
+
+        // 4. Check if there are other pending reviews (receipts with successful OCR, not duplicate, not reviewed)
+        const nextReadyForReview = remaining.find(
+          (r) => r.status === 'SUCCESS' && r.result && !r.result.is_duplicate && !r.reviewed
+        );
+
+        if (nextReadyForReview && nextReadyForReview.result) {
+          const nextUrl =
+            nextReadyForReview.previewUrl ||
+            nextReadyForReview.imageUrl ||
+            (nextReadyForReview.blob ? URL.createObjectURL(nextReadyForReview.blob) : '');
+          setSelectedId(nextReadyForReview.id);
+          onOCRComplete(
+            nextReadyForReview.result,
+            nextUrl,
+            nextReadyForReview.filename,
+            nextReadyForReview.id
+          );
+        } else {
+          // No reviews pending: select next pending item on OCR scan screen, or null
+          const nextPending = remaining.find((r) => r.status === 'PENDING') || remaining[0];
+          setSelectedId(nextPending ? nextPending.id : null);
+        }
+        return;
+      }
+
       const updatedItem: StoredReceiptItem = {
         ...item,
         status: 'SUCCESS',
@@ -719,11 +759,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       setReceipts((prev) => prev.map((r) => (r.id === item.id ? updatedItem : r)));
       await addStoredReceipts([updatedItem]).catch(() => {});
 
-      if (result.is_duplicate) {
-        setErrorNotice(
-          `రశీదు #${result.receipt_no || 'Duplicate'} ఇప్పటికే నిల్వ చేయబడింది (Receipt #${result.receipt_no} already exists in database as Record #${result.duplicate_receipt_id}, Status: ${result.duplicate_status || 'CONFIRMED'}). Re-ingestion is blocked.`
-        );
-      } else if (autoNavigateToReview) {
+      if (autoNavigateToReview) {
         const finalUrl =
           item.previewUrl || item.imageUrl || (item.blob ? URL.createObjectURL(item.blob) : '');
         onOCRComplete(result, finalUrl, item.filename, item.id);
@@ -766,6 +802,29 @@ export const ScanPage: React.FC<ScanPageProps> = ({
     }
 
     setIsBatchProcessing(false);
+
+    // After batch finishes: check if any receipts are waiting for review
+    const allRemaining = await getAllStoredReceipts().catch(() => []);
+    const readyForReview = allRemaining.find(
+      (r) => r.status === 'SUCCESS' && r.result && !r.result.is_duplicate && !r.reviewed
+    );
+
+    if (readyForReview && readyForReview.result) {
+      const nextUrl =
+        readyForReview.previewUrl ||
+        readyForReview.imageUrl ||
+        (readyForReview.blob ? URL.createObjectURL(readyForReview.blob) : '');
+      setSelectedId(readyForReview.id);
+      onOCRComplete(
+        readyForReview.result,
+        nextUrl,
+        readyForReview.filename,
+        readyForReview.id
+      );
+    } else {
+      const nextItem = allRemaining.find((r) => r.status === 'PENDING') || allRemaining[0];
+      setSelectedId(nextItem ? nextItem.id : null);
+    }
   };
 
   /* ── 9. VIEW / REVIEW PROCESSED RECEIPT ──────────────────── */
