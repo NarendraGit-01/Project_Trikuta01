@@ -53,18 +53,18 @@ def get_gemini_client(model_name: Optional[str] = None):
     MODEL_ALIASES = {
         "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
         "gemini-3.5-flash": "gemini-3.5-flash",
-        "gemini-3.8-flash": "gemini-3.5-flash-lite",
+        "gemini-3.8-flash": "gemini-3.5-flash",
         "gemini-3.8-flash-lite": "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite": "gemini-3.5-flash-lite",
-        "gemini-2.5-flash": "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
+        "gemini-2.5-flash": "gemini-3.5-flash",
         "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
-        "gemini-2.0-flash": "gemini-3.5-flash-lite",
-        "gemini-flash": "gemini-3.5-flash-lite",
+        "gemini-2.0-flash": "gemini-3.5-flash",
+        "gemini-flash": "gemini-3.5-flash",
         "gemini-flash-lite": "gemini-3.5-flash-lite",
     }
     raw_model = model_name or settings.GEMINI_PRIMARY_MODEL or "gemini-3.5-flash-lite"
-    chosen_model = MODEL_ALIASES.get(raw_model, "gemini-3.5-flash-lite")
-    return ChatGoogleGenerativeAI(model=chosen_model, max_retries=1, request_timeout=60.0, api_key=api_key)
+    chosen_model = MODEL_ALIASES.get(raw_model, raw_model)
+    return ChatGoogleGenerativeAI(model=chosen_model, max_retries=3, request_timeout=50.0, api_key=api_key)
 
 
 def process_receipt(
