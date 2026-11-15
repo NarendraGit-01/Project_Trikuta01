@@ -25,6 +25,7 @@ from backend.pipeline.image_quality import evaluate_image_quality
 from backend.pipeline.orientation import detect_orientation_heuristic, detect_orientation_with_gemini, apply_rotation
 from backend.pipeline.run import get_gemini_client, process_receipt
 from backend.pipeline.schemas import PipelineResult, QualityAssessment
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/ocr", tags=["OCR Pipeline"])
@@ -42,7 +43,6 @@ def check_and_annotate_duplicate(result: PipelineResult, db: Optional[Session] =
         close_db = True
 
     try:
-        from sqlalchemy import or_
         existing = None
 
         if clean_no:
