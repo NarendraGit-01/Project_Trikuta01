@@ -201,8 +201,9 @@ export const BooksPage: React.FC<BooksPageProps> = ({
         receipt_year: selectedYear,
         limit: 200,
       });
-      const bookLabel = bookNum === '__UNASSIGNED__' ? 'Unassigned' : `Book #${bookNum}`;
-      printPostalLabels(receipts, `Postal Dispatch Labels - ${bookLabel} (${selectedYear || 'All'})`);
+      const cleanBook = bookNum === '__UNASSIGNED__' ? 'Unassigned' : `Book_${bookNum}`;
+      const docTitle = `Sri Trikoteswara_Dispatch Labels_${cleanBook}`;
+      printPostalLabels(receipts, docTitle);
     } catch (err: any) {
       alert(`Failed to prepare dispatch labels: ${err.message || 'Unknown error'}`);
     }

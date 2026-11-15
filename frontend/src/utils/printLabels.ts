@@ -86,14 +86,14 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${docTitle || 'Postal Dispatch Labels'}</title>
+  <title>${docTitle || 'Sri Trikoteswara_Dispatch Labels'}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Suranna&family=Tiro+Telugu&display=swap" rel="stylesheet">
   <style>
     @page {
       size: A4 portrait;
-      margin: 5mm 6mm;
+      margin: 0;
     }
     * {
       box-sizing: border-box;
@@ -111,14 +111,16 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
       font-family: 'Tiro Telugu', 'Suranna', 'Gautami', 'Segoe UI Historic', sans-serif;
     }
     .sheet-page {
-      width: 100%;
-      height: 285mm;
-      max-height: 285mm;
+      width: 210mm;
+      height: 297mm;
+      max-height: 297mm;
+      padding: 5mm 6mm;
       page-break-after: always;
       break-after: page;
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      justify-content: flex-start;
       box-sizing: border-box;
     }
     .sheet-page:last-child {
@@ -127,17 +129,17 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      grid-template-rows: repeat(6, 44.5mm);
-      gap: 2.5mm 4mm;
+      grid-template-columns: repeat(2, 96mm);
+      grid-template-rows: repeat(6, 42.5mm);
+      gap: 2mm 5mm;
+      justify-content: center;
       width: 100%;
-      height: 100%;
       box-sizing: border-box;
     }
     .label-card {
       border: 1px dashed #64748b;
-      border-radius: 6px;
-      padding: 3mm 4mm;
+      border-radius: 5px;
+      padding: 2.2mm 3.5mm;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -145,8 +147,8 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
       break-inside: avoid;
       overflow: hidden;
       background: #ffffff;
-      height: 44.5mm;
-      max-height: 44.5mm;
+      height: 42.5mm;
+      max-height: 42.5mm;
       box-sizing: border-box;
     }
     .header {
@@ -155,7 +157,7 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
       align-items: center;
       border-bottom: 1px solid #cbd5e1;
       padding-bottom: 1px;
-      font-size: 7.2pt;
+      font-size: 7pt;
       flex-shrink: 0;
     }
     .temple {
@@ -180,7 +182,7 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
       flex-shrink: 0;
     }
     .sec-label {
-      font-size: 6.5pt;
+      font-size: 6.2pt;
       color: #64748b;
       font-weight: 700;
       text-transform: uppercase;
@@ -193,41 +195,41 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
       white-space: nowrap;
     }
     .devotee-te {
-      font-size: 8.5pt;
+      font-size: 8.2pt;
       font-weight: 700;
       color: #0f172a;
     }
     .devotee-en {
-      font-size: 7.2pt;
+      font-size: 7pt;
       font-weight: 600;
       color: #334155;
       text-transform: uppercase;
     }
     .address-section {
       border-top: 1px solid #e2e8f0;
-      padding-top: 1.5px;
+      padding-top: 1px;
       margin-top: 1px;
       flex: 1;
       display: flex;
       flex-direction: column;
       justify-content: flex-start;
-      gap: 1px;
+      gap: 0.5px;
       overflow: hidden;
     }
     .addr-label {
-      font-size: 6.5pt;
+      font-size: 6pt;
       color: #64748b;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.3px;
     }
     .addr-te {
-      font-size: 7.8pt;
+      font-size: 7.5pt;
       color: #0f172a;
-      line-height: 1.2;
+      line-height: 1.18;
     }
     .addr-en {
-      font-size: 7.2pt;
+      font-size: 7pt;
       color: #334155;
       line-height: 1.15;
       word-break: break-word;
@@ -236,12 +238,12 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 7.5pt;
+      font-size: 7.2pt;
       font-family: 'SF Mono', Consolas, Monaco, monospace;
       font-weight: 700;
       color: #0f172a;
       border-top: 1px solid #cbd5e1;
-      padding-top: 1.5px;
+      padding-top: 1px;
       margin-top: 1px;
       flex-shrink: 0;
     }
@@ -283,11 +285,19 @@ export function printPostalLabels(receipts: Receipt[], docTitle?: string): boole
   iframeDoc.open();
   iframeDoc.write(fullHtml);
   iframeDoc.close();
+  if (docTitle) {
+    iframeDoc.title = docTitle;
+  }
 
   // Trigger print directly inside the current browser window
   setTimeout(() => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
+    if (iframe.contentWindow) {
+      if (docTitle) {
+        iframe.contentWindow.document.title = docTitle;
+      }
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }
   }, 350);
 
   return true;

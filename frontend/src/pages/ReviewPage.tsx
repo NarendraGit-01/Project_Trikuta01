@@ -19,7 +19,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { PipelineResult, Person, Phone } from '../types';
-import { createReceipt, updateReceipt, searchGothrams, resolvePincode, PincodeDetails, deleteStagedReceipt } from '../services/api';
+import { createReceipt, updateReceipt, deleteReceipt, searchGothrams, resolvePincode, PincodeDetails, deleteStagedReceipt } from '../services/api';
 import { deleteStoredReceipt, getAllStoredReceipts } from '../services/receiptStore';
 import {
   isTeluguScript,
@@ -51,25 +51,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   const [imgAttempt, setImgAttempt] = useState(0);
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Temple-themed duplicate modal state (replaces native browser alert)
-  const [duplicateModal, setDuplicateModal] = useState<{
-    receiptNo: string;
-    hasNext: boolean;
-    onProceed: () => void;
-  } | null>(null);
-  const [countdown, setCountdown] = useState(3);
-
-  useEffect(() => {
-    if (!duplicateModal) return;
-    if (countdown <= 0) {
-      duplicateModal.onProceed();
-      return;
-    }
-    const timer = setTimeout(() => {
-      setCountdown((prev) => prev - 1);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [duplicateModal, countdown]);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     setCurrentImgSrc(imageUrl);
@@ -545,7 +527,73 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     }
   };
 
-  /* ── Save Handler ──────────────────────────────── */
+  /* ── Delete Receipt Handler ────────────────────────── */
+  const handleDeleteReceipt = async () => {
+    const dispNo = receiptNo.trim() || result.receipt_no || 'this';
+    if (
+      !window.confirm(
+        `Are you sure you want to delete Receipt #${dispNo}? This will permanently remove it from the temple database and OCR queue.`
+      )
+    ) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setSaveError(null);
+
+    try {
+      // 1. Delete from backend if already saved
+      if (existingReceiptId) {
+        await deleteReceipt(existingReceiptId, 'User deleted receipt from review screen').catch((err) => {
+          console.warn('Backend delete receipt error:', err);
+        });
+      }
+
+      // 2. Delete from cloud staging if staged
+      const stagedId = (result.intermediate_passes as any)?.staged_id;
+      if (stagedId) {
+        await deleteStagedReceipt(stagedId).catch(() => {});
+      }
+
+      // 3. Delete from IndexedDB / local queue
+      const cleanNo = receiptNo.trim() || result.receipt_no;
+      const allStored = await getAllStoredReceipts().catch(() => []);
+      const match = allStored.find(
+        (r) =>
+          (sourceFilename && r.filename === sourceFilename) ||
+          (r.result && r.result.receipt_no === cleanNo)
+      );
+      if (match) {
+        await deleteStoredReceipt(match.id).catch(() => {});
+      }
+
+      // 4. Find next pending review item
+      const nextItem = allStored.find(
+        (r) =>
+          r.status === 'SUCCESS' &&
+          r.result &&
+          !r.result.is_duplicate &&
+          !r.reviewed &&
+          (!match || r.id !== match.id)
+      );
+
+      if (nextItem && nextItem.result && onNextReview) {
+        const nextUrl =
+          nextItem.previewUrl ||
+          nextItem.imageUrl ||
+          (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
+        onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
+      } else {
+        onBackToScan();
+      }
+    } catch (err: any) {
+      console.error('Failed to delete receipt:', err);
+      setSaveError(`Failed to delete receipt: ${err.message || 'Unknown error'}`);
+      setIsDeleting(false);
+    }
+  };
+
+  /* ── Duplicate Dismiss Handler ─────────────────── */
   const handleDismissDuplicate = async () => {
     const stagedId = (result.intermediate_passes as any)?.staged_id;
     if (stagedId) {
@@ -572,25 +620,15 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
         r.result.receipt_no !== cleanNo
     );
 
-    const proceedFn = () => {
-      setDuplicateModal(null);
-      if (nextItem && nextItem.result && onNextReview) {
-        const nextUrl =
-          nextItem.previewUrl ||
-          nextItem.imageUrl ||
-          (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
-        onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
-      } else {
-        onBackToScan();
-      }
-    };
-
-    setCountdown(3);
-    setDuplicateModal({
-      receiptNo: cleanNo,
-      hasNext: !!(nextItem && nextItem.result && onNextReview),
-      onProceed: proceedFn,
-    });
+    if (nextItem && nextItem.result && onNextReview) {
+      const nextUrl =
+        nextItem.previewUrl ||
+        nextItem.imageUrl ||
+        (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
+      onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
+    } else {
+      onBackToScan();
+    }
   };
 
   const handleSaveReceipt = async (targetStatus: 'CONFIRMED' | 'INCOMPLETE') => {
@@ -701,7 +739,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           await deleteStoredReceipt(match.id).catch(() => {});
         }
 
-        // 3. Check for next pending review in queue
+        // 3. Check for next pending review in queue and navigate immediately
         const remainingStored = await getAllStoredReceipts().catch(() => []);
         const nextItem = remainingStored.find(
           (r) =>
@@ -712,26 +750,15 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             r.result.receipt_no !== cleanNo
         );
 
-        const proceedFn = () => {
-          setDuplicateModal(null);
-          if (nextItem && nextItem.result && onNextReview) {
-            const nextUrl =
-              nextItem.previewUrl ||
-              nextItem.imageUrl ||
-              (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
-            onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
-          } else {
-            onBackToScan();
-          }
-        };
-
-        // 4. Trigger temple-themed dashboard modal
-        setCountdown(3);
-        setDuplicateModal({
-          receiptNo: cleanNo,
-          hasNext: !!(nextItem && nextItem.result && onNextReview),
-          onProceed: proceedFn,
-        });
+        if (nextItem && nextItem.result && onNextReview) {
+          const nextUrl =
+            nextItem.previewUrl ||
+            nextItem.imageUrl ||
+            (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
+          onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
+        } else {
+          onBackToScan();
+        }
         return;
       }
 
@@ -807,18 +834,35 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
+          {/* Delete Receipt button before Save as Incomplete */}
+          <button
+            type="button"
+            onClick={handleDeleteReceipt}
+            disabled={isSaving || isDeleting}
+            className="flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors shadow-xs"
+            title="Delete this receipt"
+          >
+            {isDeleting ? (
+              <div className="w-3.5 h-3.5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Trash2 className="w-3.5 h-3.5 text-red-600" />
+            )}
+            <span>{isDeleting ? 'Deleting...' : 'Delete Receipt'}</span>
+          </button>
+
           <button
             onClick={() => handleSaveReceipt('INCOMPLETE')}
-            disabled={isSaving}
-            className="px-4 py-2 text-xs font-semibold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors"
+            disabled={isSaving || isDeleting}
+            className="px-4 py-2 text-xs font-semibold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-50 transition-colors"
           >
-            Save as Incomplete
+            {isSaving ? 'Saving...' : 'Save as Incomplete'}
           </button>
           {result.is_duplicate && !existingReceiptId ? (
             <button
               onClick={handleDismissDuplicate}
-              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-amber-700 hover:bg-amber-800 text-white shadow transition-colors"
+              disabled={isSaving || isDeleting}
+              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-amber-700 hover:bg-amber-800 disabled:opacity-50 text-white shadow transition-colors"
               title="Remove duplicate and proceed to next review or scan screen"
             >
               <span>Next Review / Scan Screen →</span>
@@ -826,15 +870,44 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           ) : (
             <button
               onClick={() => handleSaveReceipt('CONFIRMED')}
-              disabled={isSaving}
-              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow transition-colors"
+              disabled={isSaving || isDeleting}
+              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white shadow transition-colors"
             >
-              <CheckCircle className="w-4 h-4" />
-              <span>Confirm & Finalize Record</span>
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Saving Receipt #{receiptNo || ''}...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Confirm &amp; Finalize Record</span>
+                </>
+              )}
             </button>
           )}
         </div>
       </div>
+
+      {/* ── Saving In-Progress Feedback Banner ──────────── */}
+      {isSaving && (
+        <div className="mb-4 p-3.5 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white rounded-2xl shadow-lg flex items-center justify-between text-xs font-semibold animate-pulse">
+          <div className="flex items-center space-x-3">
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+            <div>
+              <p className="font-bold text-sm">
+                రశీదు భద్రపరచబడుతోంది... (Saving Receipt #{receiptNo || result.receipt_no})
+              </p>
+              <p className="text-[11px] text-amber-100">
+                Saving devotee records, updating books, and syncing to temple database. Please wait...
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:block text-right">
+            <span className="text-[11px] px-2.5 py-1 bg-white/20 rounded-lg">Syncing Database</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Duplicate Receipt Alert Banner ─────────────── */}
       {result.is_duplicate && !existingReceiptId && (
@@ -1524,48 +1597,6 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
         </div>
       </div>
 
-      {/* ── Temple-Themed Duplicate Notification Modal ── */}
-      {duplicateModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl border-2 border-amber-300 max-w-md w-full p-6 text-center transform transition-all animate-in zoom-in-95">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 border-2 border-amber-400 flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner text-amber-800">
-              <span>🕉️</span>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 font-telugu">
-              రశీదు ఇప్పటికే నిల్వ చేయబడింది
-            </h3>
-            <div className="mt-2 flex items-center justify-center">
-              <span className="text-xs font-mono font-bold text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1 rounded-full shadow-xs">
-                Receipt #{duplicateModal.receiptNo} Already Exists
-              </span>
-            </div>
-            <p className="text-xs text-gray-600 mt-3.5 leading-relaxed">
-              ఈ రశీదు ఇప్పటికే దేవస్థానం డేటాబేస్లో నమోదై ఉంది.
-              <br />
-              <span className="text-gray-500 mt-1 block">
-                The duplicate item has been <strong>automatically removed from the OCR queue</strong> to protect temple records.
-              </span>
-            </p>
-            <div className="mt-6 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={duplicateModal.onProceed}
-                className="w-full py-3 px-5 bg-gradient-to-r from-amber-700 via-amber-800 to-red-800 hover:from-amber-800 hover:to-red-900 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2"
-              >
-                <span>
-                  {duplicateModal.hasNext
-                    ? 'Proceed to Next Review (తదుపరి రశీదు) →'
-                    : 'Return to OCR Scan Screen (స్కాన్ స్క్రీన్) →'}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-[11px] text-gray-400 mt-3 font-mono">
-              Auto-advancing in {countdown}s...
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -345,6 +345,20 @@ export async function deleteStagedReceipt(stagedId: number): Promise<void> {
   }
 }
 
+export async function deleteReceipt(receiptId: number, reason?: string): Promise<any> {
+  const url = reason
+    ? `${API_BASE}/receipts/${receiptId}?reason=${encodeURIComponent(reason)}`
+    : `${API_BASE}/receipts/${receiptId}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 404) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to delete receipt' }));
+    throw new Error(err.detail || `Failed to delete receipt (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
 export async function processStagedReceiptOCR(
   stagedId: number,
   modelName: string = 'gemini-3.5-flash-lite',
