@@ -39,3 +39,14 @@ class Token(BaseModel):
     role: str
     username: str
     user_id: int
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6)
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    new_password: str = Field(..., min_length=6)
+    recovery_code: Optional[str] = None

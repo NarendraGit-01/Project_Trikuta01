@@ -44,29 +44,18 @@ async def lifespan(app: FastAPI):
         try:
             db = SessionLocal()
             try:
-                admin = db.query(User).filter(User.username == "admin").first()
+                admin_email = "narendra.r10109@gmail.com"
+                admin = db.query(User).filter(User.username == admin_email).first()
                 if not admin:
                     admin_user = User(
-                        username="admin",
-                        password_hash=get_password_hash("admin123"),
-                        full_name="Temple Administrator",
+                        username=admin_email,
+                        password_hash=get_password_hash("Trikuta@122026"),
+                        full_name="Narendra (Administrator)",
                         role="ADMIN",
                         active=True,
                     )
                     db.add(admin_user)
-
-                staff = db.query(User).filter(User.username == "staff").first()
-                if not staff:
-                    staff_user = User(
-                        username="staff",
-                        password_hash=get_password_hash("staff123"),
-                        full_name="Temple Office Staff",
-                        role="STAFF",
-                        active=True,
-                    )
-                    db.add(staff_user)
-
-                db.commit()
+                    db.commit()
             finally:
                 db.close()
         except Exception as e:

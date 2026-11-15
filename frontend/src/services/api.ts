@@ -64,6 +64,51 @@ export function getAuthHeaders(): Record<string, string> {
   return {};
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  if (!res.ok) {
+    let err = 'Failed to change password';
+    try {
+      const data = await res.json();
+      err = data.detail || err;
+    } catch {}
+    throw new Error(err);
+  }
+  const data = await res.json();
+  return data.message || 'Password updated successfully';
+}
+
+export async function resetPassword(email: string, newPassword: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      new_password: newPassword,
+    }),
+  });
+  if (!res.ok) {
+    let err = 'Failed to reset password';
+    try {
+      const data = await res.json();
+      err = data.detail || err;
+    } catch {}
+    throw new Error(err);
+  }
+  const data = await res.json();
+  return data.message || 'Password reset successfully';
+}
+
 export interface SampleReceipt {
   id: string;
   filename: string;
