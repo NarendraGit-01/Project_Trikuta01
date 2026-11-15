@@ -605,11 +605,10 @@ def process_staged_receipt(
         from backend.pipeline.image_loader import prepare_image
 
         pil_img = prepare_image(contents)
-        cropped_pil, rot, box = auto_orient_and_crop(pil_img)
 
         model_to_use = model_name or settings.GEMINI_PRIMARY_MODEL
         result = process_receipt(
-            image_input=cropped_pil,
+            image_input=pil_img,
             model_name=model_to_use,
             skip_transcription=skip_transcription,
         )

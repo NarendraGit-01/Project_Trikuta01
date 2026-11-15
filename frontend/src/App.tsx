@@ -203,10 +203,12 @@ export const App: React.FC = () => {
           activeOCRResult ? (
             <ErrorBoundary fallbackTitle="Review View Encountered an Error" onReset={() => setCurrentTab('scan')}>
               <ReviewPage
+                key={activeReceiptId ? `receipt_${activeReceiptId}` : activeStoredReceiptId ? `staged_${activeStoredReceiptId}` : `res_${activeOCRResult.receipt_no || ''}_${activeSourceFilename || ''}_${activeImageUrl || ''}`}
                 result={activeOCRResult}
                 imageUrl={activeImageUrl || ''}
                 sourceFilename={activeSourceFilename}
                 existingReceiptId={activeReceiptId}
+                storedReceiptId={activeStoredReceiptId}
                 onBackToScan={() => setCurrentTab('scan')}
                 onSaved={handleSavedReceipt}
                 onNextReview={(nextResult, nextImageUrl, nextFilename, nextStoredId) => {

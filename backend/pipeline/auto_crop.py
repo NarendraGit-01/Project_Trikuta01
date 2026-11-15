@@ -60,23 +60,7 @@ def auto_orient_and_crop(
         rot = 270
         h, w = img_bgr.shape[:2]
 
-    # 3. Content-Based Orientation Check (Printed Temple Header)
-    # The header has printed blue ink and temple seal at the top.
-    def blue_ink_count(slice_):
-        b, g, r = slice_[:, :, 0], slice_[:, :, 1], slice_[:, :, 2]
-        blue_mask = (b > 90) & (b > r.astype(int) + 20) & (b > g.astype(int) + 10)
-        return np.count_nonzero(blue_mask)
-
-    top_b = blue_ink_count(img_bgr[: h // 3, :])
-    bot_b = blue_ink_count(img_bgr[2 * h // 3 :, :])
-
-    if bot_b > top_b * 1.5:
-        # Document is upside-down: rotate 180
-        img_bgr = cv2.rotate(img_bgr, cv2.ROTATE_180)
-        rot = (rot + 180) % 360
-        h, w = img_bgr.shape[:2]
-
-    # 4. Receipt Slip Boundary Detection
+    # 3. Receipt Slip Boundary Detection
     # Pink paper slip in HSV + fallback for white paper receipts
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     mask_pink = cv2.inRange(hsv, np.array([120, 15, 60]), np.array([180, 255, 255]))

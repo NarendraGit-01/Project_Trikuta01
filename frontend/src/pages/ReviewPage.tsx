@@ -32,6 +32,7 @@ interface ReviewPageProps {
   imageUrl: string;
   sourceFilename?: string;
   existingReceiptId?: number | null;
+  storedReceiptId?: string;
   onBackToScan: () => void;
   onSaved: (receiptId: number) => void;
   onNextReview?: (result: PipelineResult, imageUrl: string, filename?: string, storedReceiptId?: string) => void;
@@ -42,6 +43,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   imageUrl,
   sourceFilename,
   existingReceiptId,
+  storedReceiptId,
   onBackToScan,
   onSaved,
   onNextReview,
@@ -57,7 +59,9 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     setCurrentImgSrc(imageUrl);
     setImgLoadFailed(false);
     setImgAttempt(0);
-  }, [imageUrl]);
+    setIsDeleting(false);
+    setIsSaving(false);
+  }, [imageUrl, result]);
 
   const handleImageError = () => {
     if (imgAttempt === 0) {
@@ -550,32 +554,44 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
       }
 
       // 2. Delete from cloud staging if staged
-      const stagedId = (result.intermediate_passes as any)?.staged_id;
-      if (stagedId) {
+      const stagedId =
+        (result.intermediate_passes as any)?.staged_id ||
+        (storedReceiptId && storedReceiptId.startsWith('staged_')
+          ? Number(storedReceiptId.replace('staged_', ''))
+          : undefined);
+      if (stagedId && !Number.isNaN(stagedId)) {
         await deleteStagedReceipt(stagedId).catch(() => {});
       }
 
       // 3. Delete from IndexedDB / local queue
+      if (storedReceiptId) {
+        await deleteStoredReceipt(storedReceiptId).catch(() => {});
+      }
       const cleanNo = receiptNo.trim() || result.receipt_no;
       const allStored = await getAllStoredReceipts().catch(() => []);
       const match = allStored.find(
         (r) =>
+          (storedReceiptId && r.id === storedReceiptId) ||
           (sourceFilename && r.filename === sourceFilename) ||
           (r.result && r.result.receipt_no === cleanNo)
       );
-      if (match) {
+      if (match && match.id !== storedReceiptId) {
         await deleteStoredReceipt(match.id).catch(() => {});
       }
 
       // 4. Find next pending review item
-      const nextItem = allStored.find(
+      const remainingItems = await getAllStoredReceipts().catch(() => []);
+      const nextItem = remainingItems.find(
         (r) =>
           r.status === 'SUCCESS' &&
           r.result &&
           !r.result.is_duplicate &&
           !r.reviewed &&
+          r.id !== storedReceiptId &&
           (!match || r.id !== match.id)
       );
+
+      setIsDeleting(false);
 
       if (nextItem && nextItem.result && onNextReview) {
         const nextUrl =
