@@ -785,7 +785,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       pendingItems = filteredReceipts;
     }
     if (pendingItems.length === 0) {
-      alert('No receipts loaded to process.');
+      setErrorNotice('No pending receipts loaded in the queue to process.');
       return;
     }
 

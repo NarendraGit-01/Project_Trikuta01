@@ -12,6 +12,7 @@ import {
   ChevronUp,
   Sparkles,
   ArrowLeft,
+  ArrowRight,
   Search,
   Users,
   MapPin,
@@ -49,6 +50,26 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   const [imgLoadFailed, setImgLoadFailed] = useState(false);
   const [imgAttempt, setImgAttempt] = useState(0);
   const replaceFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Temple-themed duplicate modal state (replaces native browser alert)
+  const [duplicateModal, setDuplicateModal] = useState<{
+    receiptNo: string;
+    hasNext: boolean;
+    onProceed: () => void;
+  } | null>(null);
+  const [countdown, setCountdown] = useState(3);
+
+  useEffect(() => {
+    if (!duplicateModal) return;
+    if (countdown <= 0) {
+      duplicateModal.onProceed();
+      return;
+    }
+    const timer = setTimeout(() => {
+      setCountdown((prev) => prev - 1);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [duplicateModal, countdown]);
 
   useEffect(() => {
     setCurrentImgSrc(imageUrl);
@@ -551,15 +572,25 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
         r.result.receipt_no !== cleanNo
     );
 
-    if (nextItem && nextItem.result && onNextReview) {
-      const nextUrl =
-        nextItem.previewUrl ||
-        nextItem.imageUrl ||
-        (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
-      onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
-    } else {
-      onBackToScan();
-    }
+    const proceedFn = () => {
+      setDuplicateModal(null);
+      if (nextItem && nextItem.result && onNextReview) {
+        const nextUrl =
+          nextItem.previewUrl ||
+          nextItem.imageUrl ||
+          (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
+        onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
+      } else {
+        onBackToScan();
+      }
+    };
+
+    setCountdown(3);
+    setDuplicateModal({
+      receiptNo: cleanNo,
+      hasNext: !!(nextItem && nextItem.result && onNextReview),
+      onProceed: proceedFn,
+    });
   };
 
   const handleSaveReceipt = async (targetStatus: 'CONFIRMED' | 'INCOMPLETE') => {
@@ -567,9 +598,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     setSaveError(null);
 
     if (result.is_duplicate && !existingReceiptId) {
-      setSaveError(
-        `Receipt #${receiptNo || result.receipt_no} has already been processed and stored in the database (Record #${result.duplicate_receipt_id}, Status: ${result.duplicate_status || 'CONFIRMED'}). Re-ingestion is blocked.`
-      );
+      await handleDismissDuplicate();
       setIsSaving(false);
       return;
     }
@@ -672,12 +701,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           await deleteStoredReceipt(match.id).catch(() => {});
         }
 
-        // 3. User feedback
-        alert(
-          `రశీదు #${cleanNo} ఇప్పటికే నిల్వ చేయబడింది (Receipt #${cleanNo} already exists in temple database). Duplicate entry has been removed from OCR queue.`
-        );
-
-        // 4. Check for next pending review in queue
+        // 3. Check for next pending review in queue
         const remainingStored = await getAllStoredReceipts().catch(() => []);
         const nextItem = remainingStored.find(
           (r) =>
@@ -688,15 +712,26 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             r.result.receipt_no !== cleanNo
         );
 
-        if (nextItem && nextItem.result && onNextReview) {
-          const nextUrl =
-            nextItem.previewUrl ||
-            nextItem.imageUrl ||
-            (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
-          onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
-        } else {
-          onBackToScan();
-        }
+        const proceedFn = () => {
+          setDuplicateModal(null);
+          if (nextItem && nextItem.result && onNextReview) {
+            const nextUrl =
+              nextItem.previewUrl ||
+              nextItem.imageUrl ||
+              (nextItem.blob ? URL.createObjectURL(nextItem.blob) : '');
+            onNextReview(nextItem.result, nextUrl, nextItem.filename, nextItem.id);
+          } else {
+            onBackToScan();
+          }
+        };
+
+        // 4. Trigger temple-themed dashboard modal
+        setCountdown(3);
+        setDuplicateModal({
+          receiptNo: cleanNo,
+          hasNext: !!(nextItem && nextItem.result && onNextReview),
+          onProceed: proceedFn,
+        });
         return;
       }
 
@@ -1488,6 +1523,49 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ── Temple-Themed Duplicate Notification Modal ── */}
+      {duplicateModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl border-2 border-amber-300 max-w-md w-full p-6 text-center transform transition-all animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 border-2 border-amber-400 flex items-center justify-center mx-auto mb-4 text-3xl shadow-inner text-amber-800">
+              <span>🕉️</span>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 font-telugu">
+              రశీదు ఇప్పటికే నిల్వ చేయబడింది
+            </h3>
+            <div className="mt-2 flex items-center justify-center">
+              <span className="text-xs font-mono font-bold text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1 rounded-full shadow-xs">
+                Receipt #{duplicateModal.receiptNo} Already Exists
+              </span>
+            </div>
+            <p className="text-xs text-gray-600 mt-3.5 leading-relaxed">
+              ఈ రశీదు ఇప్పటికే దేవస్థానం డేటాబేస్లో నమోదై ఉంది.
+              <br />
+              <span className="text-gray-500 mt-1 block">
+                The duplicate item has been <strong>automatically removed from the OCR queue</strong> to protect temple records.
+              </span>
+            </p>
+            <div className="mt-6 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={duplicateModal.onProceed}
+                className="w-full py-3 px-5 bg-gradient-to-r from-amber-700 via-amber-800 to-red-800 hover:from-amber-800 hover:to-red-900 text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2"
+              >
+                <span>
+                  {duplicateModal.hasNext
+                    ? 'Proceed to Next Review (తదుపరి రశీదు) →'
+                    : 'Return to OCR Scan Screen (స్కాన్ స్క్రీన్) →'}
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3 font-mono">
+              Auto-advancing in {countdown}s...
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
