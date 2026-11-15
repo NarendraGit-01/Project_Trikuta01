@@ -930,14 +930,13 @@ def export_receipts_excel(
     if export_type == "sankalpam":
         headers = [
             "Sl. No (క్రమ సంఖ్య)",
-            "Book No (పుస్తకం)",
-            "Receipt No (రసీదు సంఖ్య)",
+            "Book No (పుస్తకం సంఖ్య)",
+            "Receipt No (రశీదు సంఖ్య)",
             "Gothram (గోత్రం - తెలుగు)",
+            "Devotee Names (సభ్యుల పేర్లు - తెలుగు)",
             "Gothram (English)",
-            "Devotee Names (భక్తుల పేర్లు - తెలుగు)",
             "Devotee Names (English)",
-            "Abhishekam From (నుండి)",
-            "Abhishekam To (వరకు)",
+            "Abhishekam Period (అభిషేకం వ్యవధి)",
             "Amount (రూపాయలు)",
             "Receipt Date (తేదీ)",
         ]
@@ -995,28 +994,86 @@ def export_receipts_excel(
         phones = r.phones or []
         p1 = persons[0] if len(persons) > 0 else None
 
-        given_en = ", ".join(p.given_name_en for p in persons if p.given_name_en) if len(persons) > 1 else (p1.given_name_en if p1 else "")
-        given_te = ", ".join(p.given_name_te for p in persons if p.given_name_te) if len(persons) > 1 else (p1.given_name_te if p1 else "")
-        sur_en = ", ".join(p.surname_en for p in persons if p.surname_en) if len(persons) > 1 else (p1.surname_en if p1 else "")
-        sur_te = ", ".join(p.surname_te for p in persons if p.surname_te) if len(persons) > 1 else (p1.surname_te if p1 else "")
+        # Determine shared family surname in Telugu
+        family_surname_te = ""
+        for p in persons:
+            s = (p.surname_te or "").strip()
+            if s:
+                family_surname_te = s
+                break
 
-        full_devotee_te = f"{sur_te} {given_te}".strip() or given_te or sur_te
-        full_devotee_en = f"{sur_en} {given_en}".strip() or given_en or sur_en
+        formatted_te_members = []
+        for i, p in enumerate(persons):
+            s_te = (p.surname_te or "").strip()
+            g_te = (p.given_name_te or "").strip()
+
+            sur_candidate = s_te or family_surname_te
+            if sur_candidate and g_te.startswith(sur_candidate):
+                clean_g = g_te[len(sur_candidate):].strip(" -:,")
+            else:
+                clean_g = g_te
+
+            if i == 0:
+                # First member: include the family surname once
+                if family_surname_te and clean_g:
+                    formatted_te_members.append(f"{family_surname_te} {clean_g}")
+                elif family_surname_te:
+                    formatted_te_members.append(family_surname_te)
+                elif clean_g:
+                    formatted_te_members.append(clean_g)
+            else:
+                # Subsequent members: ONLY given name, DO NOT repeat surname
+                if clean_g:
+                    formatted_te_members.append(clean_g)
+
+        full_devotee_te = ", ".join(formatted_te_members)
+
+        # Determine shared family surname in English
+        family_surname_en = ""
+        for p in persons:
+            s = (p.surname_en or "").strip()
+            if s:
+                family_surname_en = s
+                break
+
+        formatted_en_members = []
+        for i, p in enumerate(persons):
+            s_en = (p.surname_en or "").strip()
+            g_en = (p.given_name_en or "").strip()
+
+            sur_candidate = s_en or family_surname_en
+            if sur_candidate and g_en.lower().startswith(sur_candidate.lower()):
+                clean_g = g_en[len(sur_candidate):].strip(" -:,")
+            else:
+                clean_g = g_en
+
+            if i == 0:
+                if family_surname_en and clean_g:
+                    formatted_en_members.append(f"{family_surname_en} {clean_g}")
+                elif family_surname_en:
+                    formatted_en_members.append(family_surname_en)
+                elif clean_g:
+                    formatted_en_members.append(clean_g)
+            else:
+                if clean_g:
+                    formatted_en_members.append(clean_g)
+
+        full_devotee_en = ", ".join(formatted_en_members)
 
         phone1 = phones[0].number if len(phones) > 0 else ""
         phone2 = phones[1].number if len(phones) > 1 else ""
 
         if export_type == "sankalpam":
+            abh_period = f"{r.abhishekam_from or ''} to {r.abhishekam_to or ''}".strip(" to ")
             row_data = [
                 idx,
                 r.book_number or "-",
                 r.receipt_no or "",
                 r.gothram_te or "",
-                r.gothram_en or "",
                 full_devotee_te,
+                r.gothram_en or "",
                 full_devotee_en,
-                r.abhishekam_from or "",
-                r.abhishekam_to or "",
+                abh_period,
                 r.amount or "100",
                 r.receipt_date or "",
             ]

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Package, Truck, Printer, Clock, Filter, BookOpen, CheckSquare, Square } from 'lucide-react';
 import { listDetailedReceipts } from '../services/api';
 import { Receipt } from '../types';
+import { printPostalLabels } from '../utils/printLabels';
 
 interface DispatchPageProps {
   selectedYear?: number | null;
@@ -60,14 +61,6 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear, onSele
     return filteredReceipts.filter((r) => selectedForPrint.includes(r.id));
   }, [filteredReceipts, selectedForPrint]);
 
-  // Chunk print items into exact batches of 12 for A4 pages (2 columns x 6 rows)
-  const printPages = useMemo(() => {
-    const pages: Receipt[][] = [];
-    for (let i = 0; i < itemsToPrint.length; i += 12) {
-      pages.push(itemsToPrint.slice(i, i + 12));
-    }
-    return pages;
-  }, [itemsToPrint]);
 
   const handleToggleSelect = (id: number) => {
     if (selectedForPrint.includes(id)) {
@@ -88,7 +81,11 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear, onSele
   };
 
   const handlePrintLabels = () => {
-    window.print();
+    const bookTitle = selectedBook === 'ALL' ? 'All Books' : `Book #${selectedBook}`;
+    printPostalLabels(
+      itemsToPrint,
+      `Postal Dispatch Labels - ${bookTitle} (${selectedYear || 'All'})`
+    );
   };
 
   return (
@@ -313,110 +310,6 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear, onSele
             })}
           </div>
         )}
-      </div>
-
-      {/* ── Exact A4 Print Layout: 12 Addresses Per Sheet (2 Cols x 6 Rows) ── */}
-      <div className="hidden print:block">
-        <style type="text/css">{`
-          @page {
-            size: A4 portrait;
-            margin: 6mm 6mm;
-          }
-          @media print {
-            body {
-              background: white !important;
-              color: black !important;
-            }
-            .dispatch-print-sheet {
-              display: grid !important;
-              grid-template-columns: repeat(2, 96mm) !important;
-              grid-template-rows: repeat(6, 46.5mm) !important;
-              column-gap: 4mm !important;
-              row-gap: 2mm !important;
-              height: 282mm !important;
-              max-height: 284mm !important;
-              page-break-after: always !important;
-              break-after: page !important;
-              box-sizing: border-box !important;
-              overflow: hidden !important;
-            }
-            .dispatch-label-card {
-              border: 1px dashed #64748b !important;
-              border-radius: 4px !important;
-              padding: 2mm 3mm !important;
-              height: 46.5mm !important;
-              box-sizing: border-box !important;
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-              font-size: 9.5pt !important;
-              line-height: 1.25 !important;
-              overflow: hidden !important;
-            }
-          }
-        `}</style>
-
-        {printPages.map((pageBatch, pageIdx) => (
-          <div key={pageIdx} className="dispatch-print-sheet">
-            {pageBatch.map((r) => {
-              const primaryDevotee = r.persons[0];
-              const primaryPhone = r.phones.find((p) => p.is_primary) || r.phones[0];
-              const devoteeNameTe = [primaryDevotee?.surname_te, primaryDevotee?.given_name_te]
-                .filter(Boolean)
-                .join(' ');
-              const devoteeNameEn = [primaryDevotee?.surname_en, primaryDevotee?.given_name_en]
-                .filter(Boolean)
-                .join(' ');
-
-              return (
-                <div key={r.id} className="dispatch-label-card">
-                  {/* Sender Crest / Header */}
-                  <div className="flex items-center justify-between border-b border-gray-400 pb-1 text-[8pt] text-gray-700">
-                    <span className="font-bold">SRI TRIKOTESWARA SWAMY TEMPLE PRASADAM</span>
-                    <span className="font-mono font-bold">
-                      {r.book_number ? `B#${r.book_number} ` : ''}R#{r.receipt_no}
-                    </span>
-                  </div>
-
-                  {/* Devotee Names (Both Telugu & English) */}
-                  <div className="mt-0.5">
-                    <div className="text-[7.5pt] text-gray-500 font-bold uppercase">To (గ్రహీత):</div>
-                    {devoteeNameTe && (
-                      <div className="text-[10.5pt] font-bold text-black font-telugu leading-tight">
-                        {devoteeNameTe}
-                      </div>
-                    )}
-                    {devoteeNameEn && (
-                      <div className="text-[9pt] font-semibold text-gray-800 uppercase leading-tight">
-                        {devoteeNameEn}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Devotee Address (Both Telugu & English) */}
-                  <div className="my-auto text-[8.5pt] leading-tight space-y-0.5">
-                    {r.address_te && (
-                      <div className="font-telugu font-medium text-black">
-                        {r.address_te}
-                      </div>
-                    )}
-                    {r.address_en && (
-                      <div className="text-gray-800">
-                        {r.address_en}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* PIN & Phone Number */}
-                  <div className="flex items-center justify-between border-t border-gray-400 pt-0.5 text-[8.5pt] font-mono font-bold">
-                    <span>PIN: {r.pincode || '—'}</span>
-                    <span>Ph: {primaryPhone?.number || '—'}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
       </div>
     </div>
   );

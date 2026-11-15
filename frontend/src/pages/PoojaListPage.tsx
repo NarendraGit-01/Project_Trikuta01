@@ -11,7 +11,7 @@ import {
   CheckCircle,
   AlertCircle,
 } from 'lucide-react';
-import { listDetailedReceipts, createReceipt } from '../services/api';
+import { listDetailedReceipts, createReceipt, getExportExcelUrl } from '../services/api';
 import { Receipt } from '../types';
 
 interface PoojaListPageProps {
@@ -95,54 +95,15 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
     window.print();
   };
 
-  /* ── Export to Excel (UTF-8 BOM CSV) with 4 Requested Columns ── */
+  /* ── Export to Formatted Excel (.xlsx) matching Books Page Sankalpam Option ── */
   const handleExportExcel = () => {
-    const headers = [
-      'పుస్తకం సంఖ్య (Book Num)',
-      'రశీదు సంఖ్య (Receipt Number)',
-      'గోత్రం (తెలుగు) (Gothram in Telugu)',
-      'సభ్యుల పేర్లు (తెలుగు) (Names in Telugu)',
-    ];
-
-    const escapeCsv = (str: string | undefined | null) => {
-      if (!str) return '""';
-      const clean = str.replace(/"/g, '""');
-      return `"${clean}"`;
-    };
-
-    const rows = bookFilteredReceipts.map((r) => {
-      const bookNum = r.book_number || '';
-      const receiptNum = r.receipt_no;
-      const gothramTe = r.gothram_te || r.gothram_en || '';
-      const namesTe = r.persons
-        .map((p) => {
-          const te = [p.surname_te, p.given_name_te].filter(Boolean).join(' ');
-          const en = [p.surname_en, p.given_name_en].filter(Boolean).join(' ');
-          return te || en;
-        })
-        .filter(Boolean)
-        .join(', ');
-
-      return [
-        escapeCsv(bookNum),
-        escapeCsv(receiptNum),
-        escapeCsv(gothramTe),
-        escapeCsv(namesTe),
-      ].join(',');
+    const url = getExportExcelUrl({
+      bookNumber: selectedBook === 'ALL' ? undefined : selectedBook,
+      receiptYear: selectedYear,
+      statusFilter: 'CONFIRMED',
+      exportType: 'sankalpam',
     });
-
-    // \uFEFF Byte Order Mark forces Excel to read as UTF-8 Unicode for Telugu script
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const bookSuffix = selectedBook === 'ALL' ? 'AllBooks' : `Book_${selectedBook}`;
-    link.setAttribute('download', `Sankalpam_${bookSuffix}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    window.open(url, '_blank');
   };
 
   /* ── Import Excel / CSV Handler ── */
@@ -169,7 +130,7 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
       }> = [];
 
       // Skip header row if it contains keywords
-      const startIdx = lines[0].toLowerCase().includes('book') || lines[0].includes('పుస్తకం') ? 1 : 0;
+      const startIdx = lines[0].toLowerCase().includes('book') || lines[0].includes('పుస్తకం') || lines[0].includes('క్రమ') || lines[0].toLowerCase().includes('sl') ? 1 : 0;
 
       for (let i = startIdx; i < lines.length; i++) {
         const line = lines[i];
@@ -178,11 +139,18 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
           p.trim().replace(/^"|"$/g, '').trim()
         );
         if (parts.length >= 2) {
+          // If first column is serial number (e.g. 1, 2, 3), shift column indices
+          const hasSerial = parts.length >= 5 && /^\d+$/.test(parts[0]) && parts[1];
+          const bIdx = hasSerial ? 1 : 0;
+          const rIdx = hasSerial ? 2 : 1;
+          const gIdx = hasSerial ? 3 : 2;
+          const nIdx = hasSerial ? 4 : 3;
+
           parsed.push({
-            book_number: parts[0] || '',
-            receipt_no: parts[1] || '',
-            gothram_te: parts[2] || '',
-            names_te: parts[3] || '',
+            book_number: parts[bIdx] || '',
+            receipt_no: parts[rIdx] || '',
+            gothram_te: parts[gIdx] || '',
+            names_te: parts[nIdx] || '',
           });
         }
       }

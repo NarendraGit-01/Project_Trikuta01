@@ -29,6 +29,7 @@ import {
   updateReceipt
 } from '../services/api';
 import { BooksSummaryResponse, BookFolderItem, ReceiptListItem, Receipt } from '../types';
+import { printPostalLabels } from '../utils/printLabels';
 
 interface BooksPageProps {
   selectedYear: number | null;
@@ -181,16 +182,6 @@ export const BooksPage: React.FC<BooksPageProps> = ({
     window.open(url, '_blank');
   };
 
-  const handleExportDispatchExcel = (bookNum: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const url = getExportExcelUrl({
-      bookNumber: bookNum,
-      receiptYear: selectedYear,
-      exportType: 'dispatch',
-    });
-    window.open(url, '_blank');
-  };
-
   const handleExportAllExcel = (bookNum: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const url = getExportExcelUrl({
@@ -210,105 +201,8 @@ export const BooksPage: React.FC<BooksPageProps> = ({
         receipt_year: selectedYear,
         limit: 200,
       });
-
-      const withAddress = receipts.filter(r => (r.address_te || r.address_en || '').trim().length > 0);
-      if (withAddress.length === 0) {
-        alert(`No devotees with addresses found in Book #${bookNum} to print labels.`);
-        return;
-      }
-
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        alert('Please allow popups to print dispatch labels.');
-        return;
-      }
-
-      const labelCards = withAddress.map(r => {
-        const devoteeTe = r.persons?.map(p => `${p.surname_te || ''} ${p.given_name_te || ''}`.trim()).filter(Boolean).join(', ') || '';
-        const devoteeEn = r.persons?.map(p => `${p.surname_en || ''} ${p.given_name_en || ''}`.trim()).filter(Boolean).join(', ') || 'Devotee';
-        const primaryPhone = r.phones?.find(p => p.is_primary)?.number || r.phones?.[0]?.number || '';
-        const addrTe = r.address_te || '';
-        const addrEn = r.address_en || '';
-
-        return `
-          <div class="label-card">
-            <div class="header">
-              <span class="temple">శ్రీ త్రికోటేశ్వర స్వామి దేవస్థానం, కోటప్పకొండ</span>
-              <span class="receipt-tag">Bk #${r.book_number || bookNum} • #${r.receipt_no}</span>
-            </div>
-            <div class="to-label">TO / ప్రతి:</div>
-            <div class="devotee-name">${devoteeTe || devoteeEn}</div>
-            ${devoteeTe && devoteeEn ? `<div class="devotee-sub">${devoteeEn}</div>` : ''}
-            <div class="address-box">${addrTe || addrEn}</div>
-            <div class="footer-meta">
-              <span>PIN: <b>${r.pincode || '—'}</b></span>
-              ${primaryPhone ? `<span>Ph: <b>${primaryPhone}</b></span>` : ''}
-            </div>
-            <div class="prasad-stamp">★ శ్రీ స్వామి వారి నిత్య పూజా ప్రసాదం ★</div>
-          </div>
-        `;
-      }).join('');
-
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Postal Dispatch Labels - Book #${bookNum} (${selectedYear || 'All'})</title>
-          <style>
-            @page {
-              size: A4 portrait;
-              margin: 10mm;
-            }
-            body {
-              font-family: 'Segoe UI', Arial, sans-serif;
-              margin: 0;
-              padding: 0;
-              background: #fff;
-              color: #111;
-            }
-            .grid {
-              display: grid;
-              grid-template-columns: repeat(2, 1fr);
-              grid-auto-rows: 44mm;
-              gap: 4mm;
-            }
-            .label-card {
-              border: 1px dashed #777;
-              border-radius: 6px;
-              padding: 8px 10px;
-              box-sizing: border-box;
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-              page-break-inside: avoid;
-            }
-            .header {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              border-bottom: 1px solid #ddd;
-              padding-bottom: 3px;
-              font-size: 9px;
-            }
-            .temple { font-weight: bold; color: #854d0e; }
-            .receipt-tag { font-family: monospace; font-weight: bold; }
-            .to-label { font-size: 8px; color: #555; font-weight: bold; margin-top: 2px; }
-            .devotee-name { font-size: 11px; font-weight: bold; color: #000; }
-            .devotee-sub { font-size: 9px; color: #444; }
-            .address-box { font-size: 9.5px; line-height: 1.25; color: #222; margin-top: 2px; max-height: 38px; overflow: hidden; }
-            .footer-meta { display: flex; justify-content: space-between; font-size: 9px; margin-top: 3px; border-top: 1px solid #eee; padding-top: 2px; }
-            .prasad-stamp { text-align: center; font-size: 8px; font-weight: bold; color: #b45309; }
-          </style>
-        </head>
-        <body>
-          <div class="grid">${labelCards}</div>
-          <script>
-            window.onload = function() { window.print(); };
-          </script>
-        </body>
-        </html>
-      `);
-      printWindow.document.close();
+      const bookLabel = bookNum === '__UNASSIGNED__' ? 'Unassigned' : `Book #${bookNum}`;
+      printPostalLabels(receipts, `Postal Dispatch Labels - ${bookLabel} (${selectedYear || 'All'})`);
     } catch (err: any) {
       alert(`Failed to prepare dispatch labels: ${err.message || 'Unknown error'}`);
     }
@@ -503,34 +397,24 @@ export const BooksPage: React.FC<BooksPageProps> = ({
                     </div>
 
                     {/* Action Buttons for Book Folder */}
-                    <div className="mt-5 pt-3.5 border-t border-gray-100 grid grid-cols-3 gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-5 pt-3.5 border-t border-gray-100 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={(e) => handleExportSankalpamExcel(folder.book_number, e)}
-                        className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10.5px] font-bold flex flex-col items-center justify-center transition-colors shadow-xs"
+                        className="py-2 px-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs"
                         title="Download Sankalpam Namavali Excel (Gothram & Devotee Names in Telugu)"
                       >
-                        <Flame className="w-3.5 h-3.5 text-amber-700 mb-0.5" />
+                        <Flame className="w-4 h-4 text-amber-700" />
                         <span>Sankalpam</span>
                       </button>
 
                       <button
                         type="button"
-                        onClick={(e) => handleExportDispatchExcel(folder.book_number, e)}
-                        className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[10.5px] font-bold flex flex-col items-center justify-center transition-colors shadow-xs"
-                        title="Download Dispatch Postal Excel (Addresses, PIN & Mobile)"
-                      >
-                        <Package className="w-3.5 h-3.5 text-emerald-700 mb-0.5" />
-                        <span>Dispatch</span>
-                      </button>
-
-                      <button
-                        type="button"
                         onClick={(e) => handlePrintLabels(folder.book_number, e)}
-                        className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-[10.5px] font-bold flex flex-col items-center justify-center transition-colors shadow-xs"
+                        className="py-2 px-2 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors shadow-xs"
                         title="Print 12-per-page A4 Postal Address Stickers"
                       >
-                        <Printer className="w-3.5 h-3.5 text-slate-700 mb-0.5" />
+                        <Printer className="w-4 h-4 text-slate-700" />
                         <span>Labels</span>
                       </button>
                     </div>
@@ -587,15 +471,6 @@ export const BooksPage: React.FC<BooksPageProps> = ({
               >
                 <Flame className="w-3.5 h-3.5 text-amber-700" />
                 <span>Sankalpam Excel</span>
-              </button>
-
-              <button
-                onClick={() => handleExportDispatchExcel(activeBook)}
-                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center space-x-1.5"
-                title="Download Postal Dispatch Excel"
-              >
-                <Package className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Dispatch Excel</span>
               </button>
 
               <button
