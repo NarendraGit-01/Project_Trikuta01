@@ -81,9 +81,11 @@ export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear, onSele
   };
 
   const handlePrintLabels = () => {
-    const cleanBook = selectedBook === 'ALL' ? 'All_Books' : `Book_${selectedBook}`;
-    const docTitle = `Sri Trikoteswara_Dispatch Labels_${cleanBook}`;
-    printPostalLabels(itemsToPrint, docTitle);
+    const bookTitle = selectedBook === 'ALL' ? 'All Books' : `Book #${selectedBook}`;
+    printPostalLabels(
+      itemsToPrint,
+      `Postal Dispatch Labels - ${bookTitle} (${selectedYear || 'All'})`
+    );
   };
 
   return (

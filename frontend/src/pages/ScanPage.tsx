@@ -150,16 +150,6 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [skipTranscription, setSkipTranscription] = useState<boolean>(true);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
-  const [duplicateToast, setDuplicateToast] = useState<{
-    receiptNo: string;
-    message: string;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!duplicateToast) return;
-    const t = setTimeout(() => setDuplicateToast(null), 4500);
-    return () => clearTimeout(t);
-  }, [duplicateToast]);
 
   // Zoom & Pan states for Image Preview
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -730,12 +720,9 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         // 2. Remove duplicate from current queue state
         setReceipts((prev) => prev.filter((r) => r.id !== item.id));
 
-        // 3. User feedback toast notification
-        const dispNo = result.receipt_no || 'Duplicate';
-        setDuplicateToast({
-          receiptNo: dispNo,
-          message: `Duplicate detected (#${dispNo}) and deleted. Automatically proceeding to next receipt...`,
-        });
+        // 3. User feedback banner
+        const dupNotice = `రశీదు #${result.receipt_no || 'Duplicate'} ఇప్పటికే నిల్వ చేయబడింది (Receipt #${result.receipt_no} already exists in database as Record #${result.duplicate_receipt_id}, Status: ${result.duplicate_status || 'CONFIRMED'}). Entry removed from OCR queue.`;
+        setErrorNotice(dupNotice);
 
         // 4. ONLY advance to review if this was a single OCR execution (NOT batch!)
         // In batch mode, we continue uninterrupted to process all remaining items.
@@ -1082,36 +1069,6 @@ export const ScanPage: React.FC<ScanPageProps> = ({
             </div>
           </div>
         </div>
-
-        {/* Floating Duplicate Toast Notification */}
-        {duplicateToast && (
-          <div className="fixed top-20 right-6 z-50 bg-gradient-to-r from-amber-800 via-amber-900 to-amber-950 text-white px-5 py-3 rounded-2xl shadow-2xl border border-amber-500/80 flex items-center space-x-3 text-xs font-semibold backdrop-blur-md animate-fade-in">
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
-            <span className="font-bold text-amber-300">#{duplicateToast.receiptNo}:</span>
-            <span>{duplicateToast.message}</span>
-            <button
-              onClick={() => setDuplicateToast(null)}
-              className="text-amber-300 hover:text-white ml-2 text-sm font-bold"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Batch Processing Status Banner */}
-        {isBatchProcessing && (
-          <div className="mb-4 p-3.5 bg-gradient-to-r from-teal-700 via-emerald-800 to-teal-800 text-white rounded-2xl shadow-lg flex items-center justify-between text-xs font-semibold animate-pulse">
-            <div className="flex items-center space-x-3">
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
-              <span>
-                Batch OCR Processing: Item {batchProgress.current} of {batchProgress.total} in queue...
-              </span>
-            </div>
-            <span className="text-[11px] bg-white/20 px-2.5 py-0.5 rounded-md font-mono">
-              {batchProgress.total > 0 ? Math.round((batchProgress.current / batchProgress.total) * 100) : 0}%
-            </span>
-          </div>
-        )}
 
         {/* Error Alert */}
         {errorNotice && (
