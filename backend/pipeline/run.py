@@ -140,9 +140,54 @@ def process_receipt(
         transcription_text, _ = run_transcription(llm, image_b64, tracker)
         passes["pass1_transcription"] = transcription_text
 
-    # Pass 2: Structured Extraction
-    r2, _ = run_structured_extraction(llm, image_b64, tracker)
-    passes["pass2_structured"] = r2.model_dump()
+    def is_empty_extraction(r: ReceiptExtraction) -> bool:
+        has_no = bool(r.receipt_no and str(r.receipt_no).strip())
+        has_people = bool(r.people and len(r.people) > 0)
+        has_addr = bool((r.address or r.address_te or r.address_en or "").strip())
+        has_gothram = bool((r.gothram_te or r.gothram_en or (r.gothram_readings and len(r.gothram_readings) > 0)))
+        return not (has_no or has_people or has_addr or has_gothram)
+
+    # Pass 2: Structured Extraction with Automatic Fallback
+    r2 = None
+    model_err = None
+    try:
+        r2, _ = run_structured_extraction(llm, image_b64, tracker)
+        passes["pass2_structured"] = r2.model_dump()
+    except Exception as e:
+        model_err = str(e)
+        r2 = ReceiptExtraction()
+
+    # If extraction is empty or errored (e.g. 503 high demand, 429 quota exhaustion, or timeout),
+    # automatically attempt secondary fallback model
+    if is_empty_extraction(r2) or model_err:
+        fallback_model = settings.GEMINI_FALLBACK_MODEL or "gemini-3.5-flash"
+        primary_used = model_name or settings.GEMINI_PRIMARY_MODEL
+        if fallback_model and fallback_model != primary_used:
+            try:
+                fallback_llm = get_gemini_client(fallback_model)
+                r2, _ = run_structured_extraction(fallback_llm, image_b64, tracker)
+                passes["pass2_structured"] = r2.model_dump()
+                passes["pass2_used_fallback"] = fallback_model
+                model_err = None
+            except Exception as fb_err:
+                model_err = f"Primary ({primary_used}): {model_err or 'Empty response'}; Fallback ({fallback_model}): {fb_err}"
+
+    # If extraction completely failed on both models, return an explicit model failure result
+    if is_empty_extraction(r2):
+        err_msg = model_err or "AI model returned empty extraction (model high demand, out of tokens, or temporary API rate limit). Please retry OCR."
+        return PipelineResult(
+            receipt_no=None,
+            is_model_failure=True,
+            extraction_error=err_msg,
+            needs_human_check=[
+                f"⚠️ AI MODEL EXTRACTION ERROR: {err_msg}",
+                "Receipt fields could not be extracted automatically. Please click 'Retry OCR' to re-run extraction."
+            ],
+            overall_confidence="RED",
+            intermediate_passes=passes,
+            token_usage=tracker.summary(),
+            duration_seconds=round(time.time() - start_time, 2)
+        )
 
     # Pass 3: Zoom Handwriting Crop (only needed if structured extraction found 0 devotees)
     r3 = None

@@ -871,6 +871,35 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
         </div>
       )}
 
+      {/* ── AI Model Failure / Out-of-Tokens Banner ── */}
+      {(result.is_model_failure || result.extraction_error || (!receiptNo && persons.length === 0 && !addressTe && !addressEn)) && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-red-50 via-rose-50 to-amber-50 border-2 border-red-300 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start space-x-3">
+            <div className="p-2.5 bg-red-100 text-red-700 rounded-xl shrink-0 mt-0.5">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-red-950 flex items-center space-x-2">
+                <span>AI Model Unavailable / Out of Tokens</span>
+                <span className="text-xs font-normal text-red-700 font-telugu">(మోడల్ సమస్య / టోకెన్ పరిమితి)</span>
+              </h4>
+              <p className="text-xs text-red-800 mt-1 leading-relaxed">
+                {result.extraction_error ||
+                  'The Gemini AI model was temporarily unavailable, experiencing high demand, or exceeded its free token rate limits, causing fields to be left empty. Please return to scan and retry OCR.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onBackToScan}
+            className="px-4 py-2.5 bg-red-700 hover:bg-red-800 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center justify-center space-x-1.5 shrink-0"
+          >
+            <RotateCw className="w-4 h-4" />
+            <span>Return to Scan & Retry OCR</span>
+          </button>
+        </div>
+      )}
+
       {/* ── Human Check Banner ──────────────────────── */}
       {humanChecks.length > 0 && (
         <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">

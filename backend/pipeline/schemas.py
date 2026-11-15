@@ -157,6 +157,9 @@ class PipelineResult(BaseModel):
     duplicate_warning: Optional[str] = None
     duplicate_status: Optional[str] = None
 
+    is_model_failure: bool = False
+    extraction_error: Optional[str] = None
+
     rotation_applied: int = 0
     intermediate_passes: Dict[str, Any] = Field(default_factory=dict)
     token_usage: Dict[str, Any] = Field(default_factory=dict)

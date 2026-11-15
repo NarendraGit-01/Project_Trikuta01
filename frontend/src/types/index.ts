@@ -150,6 +150,8 @@ export interface PipelineResult {
   duplicate_receipt_id?: number;
   duplicate_warning?: string;
   duplicate_status?: string;
+  is_model_failure?: boolean;
+  extraction_error?: string;
   rotation_applied?: number;
   intermediate_passes?: Record<string, any>;
   token_usage?: Record<string, any>;

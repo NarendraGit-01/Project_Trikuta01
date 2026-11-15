@@ -1,10 +1,12 @@
 import hashlib
-
+import logging
 import shutil
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+
+logger = logging.getLogger(__name__)
 
 
 from pydantic import BaseModel

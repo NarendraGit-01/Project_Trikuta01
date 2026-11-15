@@ -753,6 +753,30 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         return;
       }
 
+      // Check if extraction completely failed due to AI model unavailability / out of tokens
+      const isEmpty =
+        !result.receipt_no &&
+        (!result.people || result.people.length === 0) &&
+        !result.address &&
+        !result.gothram_as_written;
+
+      if (result.is_model_failure || isEmpty) {
+        const errMsg =
+          result.extraction_error ||
+          'AI Model was unavailable or out of tokens (మోడల్ సమస్య / టోకెన్ పరిమితి). Please click Retry OCR.';
+        setErrorNotice(errMsg);
+
+        const errItem: StoredReceiptItem = {
+          ...item,
+          status: 'ERROR',
+          error: errMsg,
+          result,
+        };
+        setReceipts((prev) => prev.map((r) => (r.id === item.id ? errItem : r)));
+        await addStoredReceipts([errItem]).catch(() => {});
+        return;
+      }
+
       const updatedItem: StoredReceiptItem = {
         ...item,
         status: 'SUCCESS',
