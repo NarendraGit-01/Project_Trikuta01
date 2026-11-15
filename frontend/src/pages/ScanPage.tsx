@@ -216,14 +216,25 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         listStagedReceipts().catch(() => null),
       ]);
 
-      // Clean up any already-reviewed local cache entries
-      const reviewedIds = localItems
-        .filter((r) => r.reviewed || r.savedReceiptId !== undefined)
+      // Clean up any already-reviewed or stale/invalid local cache entries
+      const staleOrReviewedIds = localItems
+        .filter(
+          (r) =>
+            r.reviewed ||
+            r.savedReceiptId !== undefined ||
+            (r.result && r.result.is_duplicate) ||
+            (r.status === 'SUCCESS' &&
+              (!r.result ||
+                r.result.is_model_failure ||
+                (!r.result.receipt_no && (!r.result.people || r.result.people.length === 0))))
+        )
         .map((r) => r.id);
-      if (reviewedIds.length > 0) {
-        await deleteStoredReceipts(reviewedIds).catch(() => {});
+      if (staleOrReviewedIds.length > 0) {
+        await deleteStoredReceipts(staleOrReviewedIds).catch(() => {});
       }
-      const activeLocal = localItems.filter((r) => !r.reviewed && r.savedReceiptId === undefined);
+      const activeLocal = localItems.filter(
+        (r) => !staleOrReviewedIds.includes(r.id)
+      );
       const localMap = new Map(activeLocal.map((item) => [item.id, item]));
 
       const merged: StoredReceiptItem[] = [];
@@ -618,7 +629,10 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   }, [selectedId]);
 
   /* ── 7. RUN OCR (SINGLE RECEIPT) ────────────────────────── */
-  const handleRunOCRForReceipt = async (item: StoredReceiptItem, autoNavigateToReview = true) => {
+  const handleRunOCRForReceipt = async (
+    item: StoredReceiptItem,
+    autoNavigateToReview = true
+  ): Promise<StoredReceiptItem | null> => {
     setIsProcessingSingle(true);
     setErrorNotice(null);
 
@@ -725,7 +739,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         const dupNotice = `🕉️ రశీదు #${result.receipt_no || 'Duplicate'} ఇప్పటికే దేవస్థానం డేటాబేస్‌లో ఉన్నందున క్యూ నుండి తొలగించబడింది (Receipt #${result.receipt_no || ''} was deleted from OCR queue as it already exists in database as Record #${result.duplicate_receipt_id || ''}, Status: ${result.duplicate_status || 'CONFIRMED'}).`;
         setDuplicateNotice(dupNotice);
         setErrorNotice(null);
-        return;
+        return null;
       }
 
       // Check if extraction completely failed due to AI model unavailability / out of tokens
@@ -749,7 +763,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         };
         setReceipts((prev) => prev.map((r) => (r.id === item.id ? errItem : r)));
         await addStoredReceipts([errItem]).catch(() => {});
-        return;
+        return null;
       }
 
       const updatedItem: StoredReceiptItem = {
@@ -766,6 +780,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
           item.previewUrl || item.imageUrl || (item.blob ? URL.createObjectURL(item.blob) : '');
         onOCRComplete(result, finalUrl, item.filename, item.id);
       }
+      return updatedItem;
     } catch (err: any) {
       clearInterval(timer);
       setIsProcessingSingle(false);
@@ -785,7 +800,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         const cleanMsg = errMsg.replace(/^DUPLICATE:\s*/i, '');
         setDuplicateNotice(`🕉️ రశీదు ఇప్పటికే దేవస్థానం డేటాబేస్‌లో ఉన్నందున క్యూ నుండి తొలగించబడింది (${cleanMsg}).`);
         setErrorNotice(null);
-        return;
+        return null;
       }
 
       setErrorNotice(errMsg);
@@ -793,6 +808,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       const errItem: StoredReceiptItem = { ...item, status: 'ERROR', error: errMsg };
       setReceipts((prev) => prev.map((r) => (r.id === item.id ? errItem : r)));
       await addStoredReceipts([errItem]).catch(() => {});
+      return null;
     }
   };
 
@@ -811,6 +827,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 
     setIsBatchProcessing(true);
     setBatchProgress({ current: 0, total: pendingItems.length });
+    const successfullyProcessedItems: StoredReceiptItem[] = [];
 
     for (let i = 0; i < pendingItems.length; i++) {
       const item = pendingItems[i];
@@ -819,7 +836,17 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 
       // Run OCR without auto-navigating away so batch can continue uninterrupted
       try {
-        await handleRunOCRForReceipt(item, false);
+        const processed = await handleRunOCRForReceipt(item, false);
+        if (
+          processed &&
+          processed.status === 'SUCCESS' &&
+          processed.result &&
+          !processed.result.is_duplicate &&
+          !processed.result.is_model_failure &&
+          (processed.result.receipt_no || (processed.result.people && processed.result.people.length > 0))
+        ) {
+          successfullyProcessedItems.push(processed);
+        }
       } catch (err: any) {
         console.error(`Batch item #${item.id} error:`, err);
       }
@@ -827,27 +854,28 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 
     setIsBatchProcessing(false);
 
-    // After batch finishes: check if any receipts are waiting for review
-    const allRemaining = await getAllStoredReceipts().catch(() => []);
-    const readyForReview = allRemaining.find(
-      (r) => r.status === 'SUCCESS' && r.result && !r.result.is_duplicate && !r.reviewed
-    );
-
-    if (readyForReview && readyForReview.result) {
+    // Only auto-advance to review if an item from THIS batch succeeded and is ready for review
+    if (successfullyProcessedItems.length > 0) {
+      const firstReady = successfullyProcessedItems[0];
       const nextUrl =
-        readyForReview.previewUrl ||
-        readyForReview.imageUrl ||
-        (readyForReview.blob ? URL.createObjectURL(readyForReview.blob) : '');
-      setSelectedId(readyForReview.id);
+        firstReady.previewUrl ||
+        firstReady.imageUrl ||
+        (firstReady.blob ? URL.createObjectURL(firstReady.blob) : '');
+      setSelectedId(firstReady.id);
       onOCRComplete(
-        readyForReview.result,
+        firstReady.result!,
         nextUrl,
-        readyForReview.filename,
-        readyForReview.id
+        firstReady.filename,
+        firstReady.id
       );
     } else {
-      const nextItem = allRemaining.find((r) => r.status === 'PENDING') || allRemaining[0];
-      setSelectedId(nextItem ? nextItem.id : null);
+      // If all items in this batch were duplicates or failed, stay on the scan page!
+      // Select the next pending item in visible queue if any, or null
+      setReceipts((prev) => {
+        const nextPending = prev.find((r) => r.status === 'PENDING') || prev[0];
+        setSelectedId(nextPending ? nextPending.id : null);
+        return prev;
+      });
     }
   };
 

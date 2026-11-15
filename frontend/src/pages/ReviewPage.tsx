@@ -80,22 +80,10 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   }, [imageUrl]);
 
   const handleImageError = () => {
-    if (imgAttempt === 0) {
+    if (imgAttempt === 0 && sourceFilename) {
       setImgAttempt(1);
-      if (sourceFilename) {
-        const cleanName = sourceFilename.replace(/^.*[\\\/]/, '');
-        setCurrentImgSrc(`/api/v1/storage/${cleanName}`);
-      } else {
-        setCurrentImgSrc('/samples/sample_img4.jpeg');
-      }
-    } else if (imgAttempt === 1) {
-      setImgAttempt(2);
-      const cleanName = (sourceFilename || '').replace(/^.*[\\\/]/, '');
-      if (cleanName.includes('sample_img')) {
-        setCurrentImgSrc(`/samples/${cleanName}`);
-      } else {
-        setCurrentImgSrc('/samples/sample_img4.jpeg');
-      }
+      const cleanName = sourceFilename.replace(/^.*[\\\/]/, '');
+      setCurrentImgSrc(`/api/v1/storage/${cleanName}`);
     } else {
       setImgLoadFailed(true);
     }
@@ -573,6 +561,8 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
         r.status === 'SUCCESS' &&
         r.result &&
         !r.result.is_duplicate &&
+        !r.result.is_model_failure &&
+        (r.result.receipt_no || (r.result.people && r.result.people.length > 0)) &&
         !r.reviewed &&
         r.result.receipt_no !== cleanNo
     );
@@ -716,6 +706,8 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             r.status === 'SUCCESS' &&
             r.result &&
             !r.result.is_duplicate &&
+            !r.result.is_model_failure &&
+            (r.result.receipt_no || (r.result.people && r.result.people.length > 0)) &&
             !r.reviewed &&
             r.result.receipt_no !== cleanNo
         );

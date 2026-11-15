@@ -148,7 +148,7 @@ export const App: React.FC = () => {
         }
       }
       if (!imgUrl) {
-        imgUrl = '/samples/sample_img4.jpeg';
+        imgUrl = '';
       }
 
       setActiveReceiptId(receipt.id);
