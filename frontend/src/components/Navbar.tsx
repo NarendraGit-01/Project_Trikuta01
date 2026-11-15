@@ -1,13 +1,22 @@
 import React from 'react';
-import { Camera, FileText, Flame, Package, BookOpen, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Camera, FileText, Flame, Package, BookOpen, Sparkles, CheckCircle2, LogOut, User } from 'lucide-react';
+import { AuthUser } from '../services/api';
 
 interface NavbarProps {
   currentTab: string;
   onSelectTab: (tab: string) => void;
   activeModel: string;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, activeModel }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  currentTab,
+  onSelectTab,
+  activeModel,
+  currentUser,
+  onLogout,
+}) => {
   const tabs = [
     { id: 'scan', label: 'Scan & OCR', telugu: 'రసీదు స్కాన్', icon: Camera },
     { id: 'receipts', label: 'Receipts', telugu: 'రసీదుల జాబితా', icon: FileText },
@@ -72,10 +81,36 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab, activeM
               <span className="text-amber-100 font-mono text-[11px]">{activeModel}</span>
               <span className="w-2 h-2 rounded-full bg-emerald-400" title="Connected" />
             </div>
-            <div className="flex items-center space-x-1.5 bg-amber-900/60 px-2.5 py-1 rounded-md text-xs border border-amber-500/30">
-              <span className="text-amber-200 font-medium">Staff</span>
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            </div>
+            {currentUser ? (
+              <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1.5 bg-amber-900/70 px-2.5 py-1 rounded-lg text-xs border border-amber-500/40">
+                  <User className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="text-amber-100 font-medium font-mono capitalize">
+                    {currentUser.username}
+                  </span>
+                  <span className="text-[10px] bg-amber-400/20 text-amber-200 px-1 py-0.2 rounded font-bold uppercase">
+                    {currentUser.role}
+                  </span>
+                </div>
+
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    title="Log Out (నిష్క్రమించు)"
+                    className="flex items-center space-x-1 px-2.5 py-1 bg-red-950/60 hover:bg-red-900 text-red-200 hover:text-white rounded-lg text-xs border border-red-500/30 transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Logout</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center space-x-1.5 bg-amber-900/60 px-2.5 py-1 rounded-md text-xs border border-amber-500/30">
+                <span className="text-amber-200 font-medium">Staff</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+            )}
           </div>
         </div>
 

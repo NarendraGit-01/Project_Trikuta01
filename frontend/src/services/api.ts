@@ -2,6 +2,68 @@ import { BooksSummaryResponse, GothramSearchItem, PipelineResult, QualityAssessm
 
 const API_BASE = '/api/v1';
 
+export interface AuthUser {
+  token: string;
+  username: string;
+  role: string;
+  user_id: number;
+}
+
+export function getStoredAuth(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem('trikuta_auth');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredAuth(auth: AuthUser | null) {
+  if (!auth) {
+    localStorage.removeItem('trikuta_auth');
+  } else {
+    localStorage.setItem('trikuta_auth', JSON.stringify(auth));
+  }
+}
+
+export async function loginUser(username: string, password: string): Promise<AuthUser> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    let err = 'Invalid username or password';
+    try {
+      const data = await res.json();
+      err = data.detail || err;
+    } catch {}
+    throw new Error(err);
+  }
+  const data = await res.json();
+  const authUser: AuthUser = {
+    token: data.access_token,
+    username: data.username,
+    role: data.role,
+    user_id: data.user_id,
+  };
+  setStoredAuth(authUser);
+  return authUser;
+}
+
+export function logoutUser() {
+  setStoredAuth(null);
+}
+
+export function getAuthHeaders(): Record<string, string> {
+  const auth = getStoredAuth();
+  if (auth?.token) {
+    return { Authorization: `Bearer ${auth.token}` };
+  }
+  return {};
+}
+
 export interface SampleReceipt {
   id: string;
   filename: string;

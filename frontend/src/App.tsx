@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { LoginPage } from './pages/LoginPage';
 import { ScanPage } from './pages/ScanPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ReceiptListPage } from './pages/ReceiptListPage';
@@ -8,10 +9,11 @@ import { PoojaListPage } from './pages/PoojaListPage';
 import { DispatchPage } from './pages/DispatchPage';
 import { GothramMasterPage } from './pages/GothramMasterPage';
 import { PipelineResult } from './types';
-import { getReceipt, deleteStagedReceipt } from './services/api';
+import { getReceipt, deleteStagedReceipt, getStoredAuth, logoutUser, AuthUser } from './services/api';
 import { deleteStoredReceipt } from './services/receiptStore';
 
 export const App: React.FC = () => {
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredAuth());
   const [currentTab, setCurrentTab] = useState<string>('scan');
   const [activeModel, setActiveModel] = useState<string>('gemini-3.5-flash-lite');
 
@@ -138,6 +140,10 @@ export const App: React.FC = () => {
     }
   };
 
+  if (!currentUser) {
+    return <LoginPage onLoginSuccess={(user) => setCurrentUser(user)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-gray-900">
       {/* Header Navigation */}
@@ -145,6 +151,11 @@ export const App: React.FC = () => {
         currentTab={currentTab}
         onSelectTab={(tab) => setCurrentTab(tab)}
         activeModel={activeModel}
+        currentUser={currentUser}
+        onLogout={() => {
+          logoutUser();
+          setCurrentUser(null);
+        }}
       />
 
       {/* Global Success Banner */}
