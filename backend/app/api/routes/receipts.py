@@ -350,86 +350,10 @@ def create_receipt(
         
         existing = dup_query.first()
         if existing:
-            # Update existing receipt record with confirmed/verified fields
-            existing.receipt_no = clean_receipt_no
-            existing.receipt_year = receipt_in.receipt_year
-            existing.receipt_date = receipt_in.receipt_date
-            existing.abhishekam_from = receipt_in.abhishekam_from
-            existing.abhishekam_to = receipt_in.abhishekam_to
-            existing.amount = receipt_in.amount
-            existing.gothram_en = receipt_in.gothram_en
-            existing.gothram_te = receipt_in.gothram_te
-            existing.gothram_master_id = receipt_in.gothram_master_id
-            existing.gothram_as_written = receipt_in.gothram_as_written
-            existing.address_en = receipt_in.address_en
-            existing.address_te = receipt_in.address_te
-            existing.pincode = receipt_in.pincode
-            existing.status = receipt_in.status
-            if receipt_in.book_number:
-                existing.book_number = normalize_book_num(receipt_in.book_number)
-            if receipt_in.image_hash:
-                existing.image_hash = receipt_in.image_hash
-            if receipt_in.original_image_path:
-                existing.original_image_path = receipt_in.original_image_path
-            existing.model_name = receipt_in.model_name
-            existing.processing_cost = receipt_in.processing_cost or 0.0
-            existing.processing_duration = receipt_in.processing_duration or 0.0
-            existing.confidence_data = receipt_in.confidence_data
-            existing.ocr_raw = receipt_in.ocr_raw
-
-            # Replace persons
-            db.query(ReceiptPerson).filter(ReceiptPerson.receipt_id == existing.id).delete()
-            for p in receipt_in.persons:
-                person = ReceiptPerson(
-                    receipt_id=existing.id,
-                    position=p.position,
-                    given_name_en=p.given_name_en,
-                    given_name_te=p.given_name_te,
-                    surname_en=p.surname_en,
-                    surname_te=p.surname_te,
-                    original_ocr=p.original_ocr,
-                    verification_status=p.verification_status,
-                )
-                db.add(person)
-
-            # Replace phones
-            db.query(ReceiptPhone).filter(ReceiptPhone.receipt_id == existing.id).delete()
-            for ph in receipt_in.phones:
-                phone = ReceiptPhone(
-                    receipt_id=existing.id,
-                    number=ph.number.strip(),
-                    is_primary=ph.is_primary,
-                    verification_status=ph.verification_status,
-                )
-                db.add(phone)
-
-            # Ensure dispatch record exists
-            if not existing.dispatch:
-                dispatch = PrasadamDispatch(receipt_id=existing.id, status="PENDING")
-                db.add(dispatch)
-
-            db.commit()
-            db.refresh(existing)
-            # Load relationships before returning
-            _ = list(existing.persons)
-            _ = list(existing.phones)
-            _ = existing.dispatch
-
-            # Non-blocking audit log
-            try:
-                audit = AuditLog(
-                    user_id=current_user.id if current_user else None,
-                    action="UPDATE_RECEIPT",
-                    entity="Receipt",
-                    entity_id=existing.id,
-                    new_value=json.dumps({"receipt_no": existing.receipt_no, "status": existing.status}),
-                )
-                db.add(audit)
-                db.commit()
-            except Exception:
-                db.rollback()
-
-            return existing
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Receipt #{clean_receipt_no} already exists in the temple database (Record ID: #{existing.id}, Book: #{existing.book_number or '—'}, Status: {existing.status}). Duplicate receipt cannot be re-ingested."
+            )
 
         # New receipt creation
         receipt = Receipt(
@@ -537,6 +461,8 @@ def update_receipt(
     for field, new_val in update_dict.items():
         if field in ("persons", "phones"):
             continue
+        if field == "book_number" and new_val:
+            new_val = normalize_book_num(new_val)
         old_val = getattr(receipt, field)
         if old_val != new_val:
             setattr(receipt, field, new_val)
@@ -934,9 +860,6 @@ def export_receipts_excel(
             "Receipt No (రశీదు సంఖ్య)",
             "Gothram (గోత్రం)",
             "Devotee Names (సభ్యుల పేర్లు)",
-            "Abhishekam Period (అభిషేకం వ్యవధి)",
-            "Amount (రూపాయలు)",
-            "Receipt Date (తేదీ)",
         ]
     elif export_type == "dispatch":
         headers = [
@@ -1000,29 +923,47 @@ def export_receipts_excel(
                 family_surname_te = s
                 break
 
+        # Fallback: if surname_te not explicitly split, extract common surname prefix from devotee given names
+        if not family_surname_te and persons:
+            p0_g = (persons[0].given_name_te or "").strip()
+            p0_words = p0_g.split()
+            if len(p0_words) > 1:
+                candidate = p0_words[0].strip(" -:,")
+                if len(persons) == 1:
+                    family_surname_te = candidate
+                else:
+                    matching = sum(
+                        1 for p in persons[1:]
+                        if (p.given_name_te or "").strip().startswith(candidate)
+                        or (p.surname_te or "").strip() == candidate
+                    )
+                    if matching > 0 or len(p0_words) >= 2:
+                        family_surname_te = candidate
+
         formatted_te_members = []
         for i, p in enumerate(persons):
             s_te = (p.surname_te or "").strip()
             g_te = (p.given_name_te or "").strip()
 
             sur_candidate = s_te or family_surname_te
-            if sur_candidate and g_te.startswith(sur_candidate):
-                clean_g = g_te[len(sur_candidate):].strip(" -:,")
-            else:
-                clean_g = g_te
+            clean_g = g_te
+            if sur_candidate and clean_g.startswith(sur_candidate):
+                clean_g = clean_g[len(sur_candidate):].strip(" -:,")
 
             if i == 0:
                 # First member: include the family surname once
                 if family_surname_te and clean_g:
                     formatted_te_members.append(f"{family_surname_te} {clean_g}")
+                elif g_te:
+                    formatted_te_members.append(g_te)
                 elif family_surname_te:
                     formatted_te_members.append(family_surname_te)
-                elif clean_g:
-                    formatted_te_members.append(clean_g)
             else:
                 # Subsequent members: ONLY given name, DO NOT repeat surname
                 if clean_g:
                     formatted_te_members.append(clean_g)
+                elif g_te:
+                    formatted_te_members.append(g_te)
 
         full_devotee_te = ", ".join(formatted_te_members)
 
@@ -1034,27 +975,45 @@ def export_receipts_excel(
                 family_surname_en = s
                 break
 
+        # Fallback: extract common surname prefix in English
+        if not family_surname_en and persons:
+            p0_g = (persons[0].given_name_en or "").strip()
+            p0_words = p0_g.split()
+            if len(p0_words) > 1:
+                candidate = p0_words[0].strip(" -:,")
+                if len(persons) == 1:
+                    family_surname_en = candidate
+                else:
+                    matching = sum(
+                        1 for p in persons[1:]
+                        if (p.given_name_en or "").strip().lower().startswith(candidate.lower())
+                        or (p.surname_en or "").strip().lower() == candidate.lower()
+                    )
+                    if matching > 0 or len(p0_words) >= 2:
+                        family_surname_en = candidate
+
         formatted_en_members = []
         for i, p in enumerate(persons):
             s_en = (p.surname_en or "").strip()
             g_en = (p.given_name_en or "").strip()
 
             sur_candidate = s_en or family_surname_en
-            if sur_candidate and g_en.lower().startswith(sur_candidate.lower()):
-                clean_g = g_en[len(sur_candidate):].strip(" -:,")
-            else:
-                clean_g = g_en
+            clean_g = g_en
+            if sur_candidate and clean_g.lower().startswith(sur_candidate.lower()):
+                clean_g = clean_g[len(sur_candidate):].strip(" -:,")
 
             if i == 0:
                 if family_surname_en and clean_g:
                     formatted_en_members.append(f"{family_surname_en} {clean_g}")
+                elif g_en:
+                    formatted_en_members.append(g_en)
                 elif family_surname_en:
                     formatted_en_members.append(family_surname_en)
-                elif clean_g:
-                    formatted_en_members.append(clean_g)
             else:
                 if clean_g:
                     formatted_en_members.append(clean_g)
+                elif g_en:
+                    formatted_en_members.append(g_en)
 
         full_devotee_en = ", ".join(formatted_en_members)
 
@@ -1062,16 +1021,12 @@ def export_receipts_excel(
         phone2 = phones[1].number if len(phones) > 1 else ""
 
         if export_type == "sankalpam":
-            abh_period = f"{r.abhishekam_from or ''} to {r.abhishekam_to or ''}".strip(" to ")
             row_data = [
                 idx,
                 r.book_number or "-",
                 r.receipt_no or "",
                 r.gothram_te or r.gothram_en or "",
                 full_devotee_te or full_devotee_en,
-                abh_period,
-                r.amount or "100",
-                r.receipt_date or "",
             ]
         elif export_type == "dispatch":
             disp_status = r.dispatch.status if r.dispatch else "PENDING"

@@ -526,6 +526,14 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     setIsSaving(true);
     setSaveError(null);
 
+    if (result.is_duplicate && !existingReceiptId) {
+      setSaveError(
+        `Receipt #${receiptNo || result.receipt_no} has already been processed and stored in the database (Record #${result.duplicate_receipt_id}, Status: ${result.duplicate_status || 'CONFIRMED'}). Re-ingestion is blocked.`
+      );
+      setIsSaving(false);
+      return;
+    }
+
     if (targetStatus === 'CONFIRMED') {
       const errors: string[] = [];
       if (!receiptNo.trim()) errors.push('Receipt number is required');
@@ -679,16 +687,45 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           >
             Save as Incomplete
           </button>
-          <button
-            onClick={() => handleSaveReceipt('CONFIRMED')}
-            disabled={isSaving}
-            className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow transition-colors"
-          >
-            <CheckCircle className="w-4 h-4" />
-            <span>Confirm & Finalize Record</span>
-          </button>
+          {result.is_duplicate && !existingReceiptId ? (
+            <button
+              disabled
+              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-red-100 text-red-700 border border-red-300 shadow-xs cursor-not-allowed opacity-80"
+              title="Duplicate receipt already exists in database"
+            >
+              <AlertTriangle className="w-4 h-4 text-red-600" />
+              <span>Already Stored • Re-ingestion Blocked</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => handleSaveReceipt('CONFIRMED')}
+              disabled={isSaving}
+              className="flex items-center space-x-2 px-5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow transition-colors"
+            >
+              <CheckCircle className="w-4 h-4" />
+              <span>Confirm & Finalize Record</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* ── Duplicate Receipt Alert Banner ─────────────── */}
+      {result.is_duplicate && !existingReceiptId && (
+        <div className="mb-4 p-4 bg-red-50 border-2 border-red-300 rounded-2xl flex items-start space-x-3 text-red-900 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="text-xs">
+            <p className="font-bold text-sm text-red-800">
+              రశీదు ఇప్పటికే నిల్వ చేయబడింది (Receipt Already Processed &amp; Stored)
+            </p>
+            <p className="mt-1">
+              Receipt <strong>#{result.receipt_no}</strong> is already stored in the temple database as Record <strong>#{result.duplicate_receipt_id}</strong> (Status: <strong>{result.duplicate_status || 'CONFIRMED'}</strong>).
+            </p>
+            <p className="mt-1 text-red-700 font-semibold">
+              Duplicate re-ingestion is blocked to prevent data corruption. To edit or review the existing record, open it directly from the Receipts list.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Save Error ──────────────────────────────── */}
       {saveError && (

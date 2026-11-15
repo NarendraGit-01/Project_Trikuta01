@@ -270,7 +270,25 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
                   <div className="divide-y divide-gray-100 p-3 bg-amber-50/20 font-telugu">
                     {groupedByGothram[gothram].map((receipt) => {
                       // Format Telugu devotee names with family surname once (NO English names!)
-                      const familySurnameTe = receipt.persons.find((p) => p.surname_te)?.surname_te?.trim() || '';
+                      let familySurnameTe = receipt.persons.find((p) => p.surname_te)?.surname_te?.trim() || '';
+                      if (!familySurnameTe && receipt.persons.length > 0) {
+                        const p0 = (receipt.persons[0].given_name_te || receipt.persons[0].given_name_en || '').trim();
+                        const parts = p0.split(/\s+/);
+                        if (parts.length > 1) {
+                          const candidate = parts[0].replace(/^[\s\-:,]+|[\s\-:,]+$/g, '');
+                          if (receipt.persons.length === 1) {
+                            familySurnameTe = candidate;
+                          } else {
+                            const matching = receipt.persons.slice(1).some((p) =>
+                              (p.given_name_te || '').trim().startsWith(candidate) ||
+                              (p.surname_te || '').trim() === candidate
+                            );
+                            if (matching || parts.length >= 2) {
+                              familySurnameTe = candidate;
+                            }
+                          }
+                        }
+                      }
                       const formattedMembers: string[] = [];
                       receipt.persons.forEach((p, idx) => {
                         const sTe = (p.surname_te || '').trim();

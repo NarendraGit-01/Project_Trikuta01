@@ -719,7 +719,11 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       setReceipts((prev) => prev.map((r) => (r.id === item.id ? updatedItem : r)));
       await addStoredReceipts([updatedItem]).catch(() => {});
 
-      if (autoNavigateToReview) {
+      if (result.is_duplicate) {
+        setErrorNotice(
+          `రశీదు #${result.receipt_no || 'Duplicate'} ఇప్పటికే నిల్వ చేయబడింది (Receipt #${result.receipt_no} already exists in database as Record #${result.duplicate_receipt_id}, Status: ${result.duplicate_status || 'CONFIRMED'}). Re-ingestion is blocked.`
+        );
+      } else if (autoNavigateToReview) {
         const finalUrl =
           item.previewUrl || item.imageUrl || (item.blob ? URL.createObjectURL(item.blob) : '');
         onOCRComplete(result, finalUrl, item.filename, item.id);
@@ -1276,10 +1280,17 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                       </span>
                     )}
                     {selectedReceipt.status === 'SUCCESS' && (
-                      <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold flex items-center space-x-1 border border-emerald-300">
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>OCR Extracted • Ready for Review</span>
-                      </span>
+                      selectedReceipt.result?.is_duplicate ? (
+                        <span className="bg-red-100 text-red-800 px-2.5 py-1 rounded-full font-bold flex items-center space-x-1 border border-red-300">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                          <span>రశీదు ఇప్పటికే నిల్వ చేయబడింది (Already Stored • Record #{selectedReceipt.result.duplicate_receipt_id})</span>
+                        </span>
+                      ) : (
+                        <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold flex items-center space-x-1 border border-emerald-300">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>OCR Extracted • Ready for Review</span>
+                        </span>
+                      )
                     )}
                     {selectedReceipt.status === 'ERROR' && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
@@ -1299,13 +1310,24 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                   {/* Primary Action Button */}
                   <div className="flex items-center space-x-2 w-full sm:w-auto">
                     {selectedReceipt.status === 'SUCCESS' ? (
-                      <button
-                        onClick={() => handleOpenReview(selectedReceipt)}
-                        className="w-full sm:w-auto px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 transition-all"
-                      >
-                        <Eye className="w-4 h-4" />
-                        <span>REVIEW & VERIFY EXTRACTION →</span>
-                      </button>
+                      selectedReceipt.result?.is_duplicate ? (
+                        <button
+                          disabled
+                          className="w-full sm:w-auto px-5 py-2.5 bg-red-100 text-red-700 border border-red-300 rounded-xl text-xs font-bold cursor-not-allowed opacity-90 flex items-center justify-center space-x-1.5 shadow-xs"
+                          title="This receipt already exists and is stored in the database. Re-ingestion is blocked."
+                        >
+                          <AlertTriangle className="w-4 h-4 text-red-600" />
+                          <span>ALREADY STORED • RE-INGESTION BLOCKED</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenReview(selectedReceipt)}
+                          className="w-full sm:w-auto px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-md flex items-center justify-center space-x-1.5 transition-all"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span>REVIEW & VERIFY EXTRACTION →</span>
+                        </button>
+                      )
                     ) : selectedReceipt.status === 'ERROR' ? (
                       <button
                         onClick={() => handleRunOCRForReceipt(selectedReceipt, true)}
@@ -1520,10 +1542,17 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                               </span>
                             )}
                             {item.status === 'SUCCESS' && (
-                              <span className="text-[10px] text-emerald-700 font-bold flex items-center space-x-1">
-                                <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Extracted</span>
-                              </span>
+                              item.result?.is_duplicate ? (
+                                <span className="text-[10px] text-red-700 font-bold flex items-center space-x-1" title="Receipt already stored in database">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                                  <span>Already Stored</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-emerald-700 font-bold flex items-center space-x-1">
+                                  <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>Extracted</span>
+                                </span>
+                              )
                             )}
                             {item.status === 'ERROR' && (
                               <span className="text-[10px] text-red-600 font-bold flex items-center space-x-1">
@@ -1533,15 +1562,21 @@ export const ScanPage: React.FC<ScanPageProps> = ({
                             )}
 
                             {item.status === 'SUCCESS' && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenReview(item);
-                                }}
-                                className="text-[10px] text-amber-800 hover:text-amber-950 font-bold underline"
-                              >
-                                Review →
-                              </button>
+                              item.result?.is_duplicate ? (
+                                <span className="text-[10px] text-red-600 font-semibold italic">
+                                  Duplicate
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReview(item);
+                                  }}
+                                  className="text-[10px] text-amber-800 hover:text-amber-950 font-bold underline"
+                                >
+                                  Review →
+                                </button>
+                              )
                             )}
                           </div>
                         </div>

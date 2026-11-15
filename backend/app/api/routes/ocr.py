@@ -33,34 +33,49 @@ SAMPLES_DIR = Path("Reference Images")
 
 def check_and_annotate_duplicate(result: PipelineResult, db: Optional[Session] = None) -> PipelineResult:
     """Check if the extracted receipt number already exists in the database and annotate result."""
-    if not result.receipt_no:
-        return result
-
-    clean_no = str(result.receipt_no).strip()
+    clean_no = str(result.receipt_no).strip() if result.receipt_no else ""
     close_db = False
     if db is None:
         db = SessionLocal()
         close_db = True
 
     try:
-        q = db.query(Receipt).filter(Receipt.receipt_no == clean_no)
-        if settings.RECEIPT_UNIQUENESS_POLICY == "yearly" and result.receipt_year:
-            q = q.filter(Receipt.receipt_year == result.receipt_year)
+        from sqlalchemy import or_
+        existing = None
 
-        existing = q.first()
+        if clean_no:
+            clean_numeric = clean_no.lstrip("0") or "0" if clean_no.isdigit() else clean_no
+            q = db.query(Receipt).filter(
+                or_(
+                    Receipt.receipt_no == clean_no,
+                    Receipt.receipt_no == clean_numeric,
+                )
+            )
+            if settings.RECEIPT_UNIQUENESS_POLICY == "yearly" and result.receipt_year:
+                q = q.filter(Receipt.receipt_year == result.receipt_year)
+            existing = q.first()
+
+        # Also check by image_hash if available
+        img_hash = getattr(result, "image_hash", None)
+        if not img_hash and isinstance(result.intermediate_passes, dict):
+            img_hash = result.intermediate_passes.get("image_hash")
+        if not existing and img_hash:
+            existing = db.query(Receipt).filter(Receipt.image_hash == img_hash).first()
+
         if existing:
             result.is_duplicate = True
             result.duplicate_receipt_id = existing.id
             result.duplicate_status = existing.status
+            display_no = clean_no or existing.receipt_no or str(existing.id)
             result.duplicate_warning = (
-                f"Receipt #{clean_no} already exists in the temple database "
+                f"Receipt #{display_no} already exists in the temple database "
                 f"(Status: {existing.status}, Record ID: #{existing.id})."
             )
-            alert_msg = f"DUPLICATE DETECTED: Receipt #{clean_no} is already in database (Status: {existing.status})"
+            alert_msg = f"DUPLICATE DETECTED: Receipt #{display_no} is already stored in database (Status: {existing.status}, ID: #{existing.id})"
             if alert_msg not in result.needs_human_check:
                 result.needs_human_check.insert(0, alert_msg)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Error checking duplicate receipt in DB: {e}")
     finally:
         if close_db:
             db.close()
