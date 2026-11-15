@@ -17,7 +17,14 @@ from backend.app.models.user import User
 from backend.app.schemas.receipt import ReceiptCreate, ReceiptListItem, ReceiptOut, ReceiptUpdate
 from backend.app.storage import get_storage
 
+from pydantic import BaseModel
+
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
+
+
+class RenameBookIn(BaseModel):
+    new_book_number: str
+    receipt_year: Optional[int] = None
 
 
 def _get_receipt_image_url(r, storage) -> Optional[str]:
@@ -34,22 +41,24 @@ def _get_receipt_image_url(r, storage) -> Optional[str]:
 
 
 @router.get("/books/summary")
-def get_books_summary(db: Session = Depends(get_db)):
+def get_books_summary(
+    receipt_year: Optional[int] = Query(None, description="Optional filter by receipt year"),
+    db: Session = Depends(get_db)
+):
     """Return categorized folder stats grouped by book number."""
     from typing import Dict, Any
     from sqlalchemy import func
 
     # Ultra-fast aggregate query directly in SQL engine
-    rows = (
-        db.query(
-            Receipt.book_number,
-            Receipt.status,
-            Receipt.is_archived,
-            func.count(Receipt.id)
-        )
-        .group_by(Receipt.book_number, Receipt.status, Receipt.is_archived)
-        .all()
+    q = db.query(
+        Receipt.book_number,
+        Receipt.status,
+        Receipt.is_archived,
+        func.count(Receipt.id)
     )
+    if receipt_year is not None:
+        q = q.filter(Receipt.receipt_year == receipt_year)
+    rows = q.group_by(Receipt.book_number, Receipt.status, Receipt.is_archived).all()
 
     archived_count = 0
     total_all = 0
@@ -105,6 +114,7 @@ def get_books_summary(db: Session = Depends(get_db)):
 def list_receipts(
     q: Optional[str] = Query(None, description="Search query (receipt no, name, phone, gothram, book no)"),
     book_number: Optional[str] = Query(None, description="Filter by book number"),
+    receipt_year: Optional[int] = Query(None, description="Filter by receipt year"),
     status_filter: Optional[str] = Query(None, description="PENDING_VERIFICATION, CONFIRMED, INCOMPLETE"),
     archived_only: bool = Query(False, description="Filter for archived/deleted receipts only"),
     date_from: Optional[str] = None,
@@ -119,6 +129,9 @@ def list_receipts(
         query = query.filter(Receipt.is_archived == True)
     else:
         query = query.filter(or_(Receipt.is_archived == False, Receipt.is_archived == None))
+
+    if receipt_year is not None:
+        query = query.filter(Receipt.receipt_year == receipt_year)
 
     if isinstance(book_number, str) and book_number.strip():
         bn = book_number.strip()
@@ -210,12 +223,15 @@ def list_receipts(
 def list_detailed_receipts(
     status_filter: Optional[str] = Query(None, description="PENDING_VERIFICATION, CONFIRMED, INCOMPLETE"),
     book_number: Optional[str] = Query(None, description="Filter by book number"),
+    receipt_year: Optional[int] = Query(None, description="Filter by receipt year"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
     """Fetch full receipt details (persons, phones, dispatch) in one batched query for Sankalpam & Dispatch views."""
     query = db.query(Receipt).filter(or_(Receipt.is_archived == False, Receipt.is_archived == None))
+    if receipt_year is not None:
+        query = query.filter(Receipt.receipt_year == receipt_year)
     if isinstance(status_filter, str) and status_filter.strip():
         query = query.filter(Receipt.status == status_filter.strip())
     if isinstance(book_number, str) and book_number.strip():
@@ -803,13 +819,50 @@ def export_sankalpam_csv(db: Session = Depends(get_db)):
     )
 
 
+@router.put("/books/{book_number}/rename")
+def rename_book(
+    book_number: str,
+    payload: RenameBookIn,
+    db: Session = Depends(get_db)
+):
+    """Rename a book number across all receipts belonging to that book and optional year."""
+    new_num = payload.new_book_number.strip()
+    if not new_num:
+        raise HTTPException(status_code=400, detail="New book number cannot be empty")
+
+    clean_old = book_number.strip()
+    q = db.query(Receipt)
+    if clean_old in ("__UNASSIGNED__", "unassigned", "None", "-"):
+        q = q.filter(or_(Receipt.book_number == None, Receipt.book_number == ""))
+    else:
+        q = q.filter(Receipt.book_number == clean_old)
+
+    if payload.receipt_year is not None:
+        q = q.filter(Receipt.receipt_year == payload.receipt_year)
+
+    receipts = q.all()
+    if not receipts:
+        raise HTTPException(status_code=404, detail=f"No receipts found for Book #{book_number}")
+
+    for r in receipts:
+        r.book_number = new_num
+    db.commit()
+    return {
+        "message": f"Updated {len(receipts)} receipts to Book #{new_num}",
+        "count": len(receipts),
+        "new_book_number": new_num,
+    }
+
+
 @router.get("/export/excel")
 def export_receipts_excel(
     book_number: Optional[str] = Query(None, description="Optional filter by book number"),
+    receipt_year: Optional[int] = Query(None, description="Optional filter by receipt year"),
     status_filter: Optional[str] = Query(None, description="Optional filter by status"),
+    export_type: Optional[str] = Query("all", description="all, sankalpam, or dispatch"),
     db: Session = Depends(get_db)
 ):
-    """Export all processed receipt records into a consolidated, beautifully formatted Excel workbook."""
+    """Export receipt records into a consolidated, beautifully formatted Excel workbook (All, Sankalpam, or Dispatch)."""
     import io
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -817,6 +870,8 @@ def export_receipts_excel(
     from fastapi.responses import Response
 
     query = db.query(Receipt)
+    if receipt_year is not None:
+        query = query.filter(Receipt.receipt_year == receipt_year)
     if book_number and book_number.strip():
         bn = book_number.strip()
         if bn in ("__UNASSIGNED__", "unassigned", "None", "-"):
@@ -826,18 +881,29 @@ def export_receipts_excel(
     if status_filter and status_filter.strip():
         query = query.filter(Receipt.status == status_filter.strip())
 
-    receipts = query.order_by(Receipt.id.desc()).all()
+    receipts = query.options(
+        selectinload(Receipt.persons),
+        selectinload(Receipt.phones),
+        selectinload(Receipt.dispatch),
+    ).order_by(Receipt.id.desc()).all()
 
     wb = Workbook()
     ws = wb.active
-    if book_number and book_number.strip():
-        clean_title = "Unassigned" if book_number.strip() in ("__UNASSIGNED__", "unassigned", "None", "-") else f"Book {book_number.strip()}"
-        ws.title = clean_title[:31]  # Excel sheet title max 31 chars
+    clean_bn = (book_number or "").strip()
+    year_tag = f"_{receipt_year}" if receipt_year else ""
+
+    if clean_bn:
+        clean_title = "Unassigned" if clean_bn in ("__UNASSIGNED__", "unassigned", "None", "-") else f"Book {clean_bn}"
+        ws.title = clean_title[:31]
     else:
         ws.title = "All Receipts"
 
-    # Header styling
     header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+    if export_type == "sankalpam":
+        header_fill = PatternFill(start_color="B45309", end_color="B45309", fill_type="solid")  # Amber/Saffron
+    elif export_type == "dispatch":
+        header_fill = PatternFill(start_color="047857", end_color="047857", fill_type="solid")  # Emerald/Postal
+
     header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
     data_font = Font(name="Segoe UI", size=10)
     border_side = Side(border_style="thin", color="D9D9D9")
@@ -845,32 +911,60 @@ def export_receipts_excel(
     center_align = Alignment(horizontal="center", vertical="center")
     left_align = Alignment(horizontal="left", vertical="center")
 
-    headers = [
-        "Receipt Number",
-        "Book Number",
-        "Receipt Date",
-        "Abhishekam From",
-        "Abhishekam To",
-        "Amount",
-        "Gothram (English)",
-        "Gothram (Telugu)",
-        "Devotee Given Name (English)",
-        "Devotee Given Name (Telugu)",
-        "Surname (English)",
-        "Surname (Telugu)",
-        "Address (English)",
-        "Address (Telugu)",
-        "Phone Number 1",
-        "Phone Number 2",
-        "Pincode",
-        "Processing Status",
-        "Verification Status",
-        "Created Date",
-    ]
+    if export_type == "sankalpam":
+        headers = [
+            "Sl. No (క్రమ సంఖ్య)",
+            "Book No (పుస్తకం)",
+            "Receipt No (రసీదు సంఖ్య)",
+            "Gothram (గోత్రం - తెలుగు)",
+            "Gothram (English)",
+            "Devotee Names (భక్తుల పేర్లు - తెలుగు)",
+            "Devotee Names (English)",
+            "Abhishekam From (నుండి)",
+            "Abhishekam To (వరకు)",
+            "Amount (రూపాయలు)",
+            "Receipt Date (తేదీ)",
+        ]
+    elif export_type == "dispatch":
+        headers = [
+            "Sl. No (క్రమ సంఖ్య)",
+            "Book No (పుస్తకం)",
+            "Receipt No (రసీదు సంఖ్య)",
+            "Devotee Name (భక్తుని పేరు - తెలుగు)",
+            "Devotee Name (English)",
+            "Address (చిరునామా - తెలుగు)",
+            "Address (English)",
+            "PIN Code (పిన్)",
+            "Mobile (ఫోన్ నెంబర్)",
+            "Abhishekam Period",
+            "Dispatch Status (పంపిణీ)",
+        ]
+    else:
+        headers = [
+            "Receipt Number",
+            "Book Number",
+            "Receipt Date",
+            "Abhishekam From",
+            "Abhishekam To",
+            "Amount",
+            "Gothram (English)",
+            "Gothram (Telugu)",
+            "Devotee Given Name (English)",
+            "Devotee Given Name (Telugu)",
+            "Surname (English)",
+            "Surname (Telugu)",
+            "Address (English)",
+            "Address (Telugu)",
+            "Phone Number 1",
+            "Phone Number 2",
+            "Pincode",
+            "Processing Status",
+            "Verification Status",
+            "Created Date",
+        ]
 
     ws.append(headers)
 
-    # Style header row
     for col_idx in range(1, len(headers) + 1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
@@ -879,48 +973,77 @@ def export_receipts_excel(
         cell.border = thin_border
     ws.row_dimensions[1].height = 28
 
-    # Populate rows
     current_row = 2
-    for r in receipts:
-        # Multi-person preservation: if multiple persons exist, list them or output primary with all devotees preserved
+    for idx, r in enumerate(receipts, start=1):
         persons = r.persons or []
         phones = r.phones or []
-
         p1 = persons[0] if len(persons) > 0 else None
-        # In case multiple devotees exist, join their details cleanly
+
         given_en = ", ".join(p.given_name_en for p in persons if p.given_name_en) if len(persons) > 1 else (p1.given_name_en if p1 else "")
         given_te = ", ".join(p.given_name_te for p in persons if p.given_name_te) if len(persons) > 1 else (p1.given_name_te if p1 else "")
         sur_en = ", ".join(p.surname_en for p in persons if p.surname_en) if len(persons) > 1 else (p1.surname_en if p1 else "")
         sur_te = ", ".join(p.surname_te for p in persons if p.surname_te) if len(persons) > 1 else (p1.surname_te if p1 else "")
-        verif_status = ", ".join(f"{p.given_name_en or 'P'}:{p.verification_status}" for p in persons if p.verification_status) if persons else "N/A"
+
+        full_devotee_te = f"{sur_te} {given_te}".strip() or given_te or sur_te
+        full_devotee_en = f"{sur_en} {given_en}".strip() or given_en or sur_en
 
         phone1 = phones[0].number if len(phones) > 0 else ""
         phone2 = phones[1].number if len(phones) > 1 else ""
 
-        created_str = r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else ""
-
-        row_data = [
-            r.receipt_no or "",
-            r.book_number or "",
-            r.receipt_date or "",
-            r.abhishekam_from or "",
-            r.abhishekam_to or "",
-            r.amount or "",
-            r.gothram_en or "",
-            r.gothram_te or "",
-            given_en or "",
-            given_te or "",
-            sur_en or "",
-            sur_te or "",
-            r.address_en or "",
-            r.address_te or "",
-            phone1 or "",
-            phone2 or "",
-            r.pincode or "",
-            r.status or "",
-            verif_status or "",
-            created_str or "",
-        ]
+        if export_type == "sankalpam":
+            row_data = [
+                idx,
+                r.book_number or "-",
+                r.receipt_no or "",
+                r.gothram_te or "",
+                r.gothram_en or "",
+                full_devotee_te,
+                full_devotee_en,
+                r.abhishekam_from or "",
+                r.abhishekam_to or "",
+                r.amount or "100",
+                r.receipt_date or "",
+            ]
+        elif export_type == "dispatch":
+            disp_status = r.dispatch.status if r.dispatch else "PENDING"
+            row_data = [
+                idx,
+                r.book_number or "-",
+                r.receipt_no or "",
+                full_devotee_te,
+                full_devotee_en,
+                r.address_te or "",
+                r.address_en or "",
+                r.pincode or "",
+                phone1,
+                f"{r.abhishekam_from or ''} to {r.abhishekam_to or ''}".strip(),
+                disp_status,
+            ]
+        else:
+            verif_status = ", ".join(f"{p.given_name_en or 'P'}:{p.verification_status}" for p in persons if p.verification_status) if persons else "N/A"
+            created_str = r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else ""
+            row_data = [
+                r.receipt_no or "",
+                r.book_number or "",
+                r.receipt_date or "",
+                r.abhishekam_from or "",
+                r.abhishekam_to or "",
+                r.amount or "",
+                r.gothram_en or "",
+                r.gothram_te or "",
+                given_en or "",
+                given_te or "",
+                sur_en or "",
+                sur_te or "",
+                r.address_en or "",
+                r.address_te or "",
+                phone1 or "",
+                phone2 or "",
+                r.pincode or "",
+                r.status or "",
+                verif_status or "",
+                created_str or "",
+            ]
 
         ws.append(row_data)
 
@@ -928,18 +1051,16 @@ def export_receipts_excel(
             cell = ws.cell(row=current_row, column=col_idx)
             cell.font = data_font
             cell.border = thin_border
-            if col_idx in (1, 2, 3, 4, 5, 15, 16, 17, 18, 20):
+            if col_idx in (1, 2, 3):
                 cell.alignment = center_align
             else:
                 cell.alignment = left_align
         ws.row_dimensions[current_row].height = 20
         current_row += 1
 
-    # Enable Excel Auto-Filter on headers
     last_col_letter = get_column_letter(len(headers))
     ws.auto_filter.ref = f"A1:{last_col_letter}{max(current_row - 1, 1)}"
 
-    # Auto-fit column widths with readable margin
     for col in ws.columns:
         max_len = 0
         col_letter = get_column_letter(col[0].column)
@@ -954,11 +1075,13 @@ def export_receipts_excel(
     output.seek(0)
 
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    if book_number and book_number.strip():
-        safe_bn = "unassigned" if book_number.strip() in ("__UNASSIGNED__", "unassigned", "None", "-") else book_number.strip().replace(" ", "_")
-        filename = f"temple_receipts_book_{safe_bn}_{ts}.xlsx"
+    type_tag = f"_{export_type}" if export_type != "all" else ""
+    if clean_bn:
+        safe_bn = "unassigned" if clean_bn in ("__UNASSIGNED__", "unassigned", "None", "-") else clean_bn.replace(" ", "_")
+        filename = f"temple_receipts_book_{safe_bn}{type_tag}{year_tag}_{ts}.xlsx"
     else:
-        filename = f"temple_receipts_all_{ts}.xlsx"
+        filename = f"temple_receipts_all{type_tag}{year_tag}_{ts}.xlsx"
+
     return Response(
         content=output.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

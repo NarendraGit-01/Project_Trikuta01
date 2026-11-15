@@ -35,11 +35,12 @@ async function restoreReceipt(id: number): Promise<void> {
 }
 
 interface ReceiptListPageProps {
+  selectedYear?: number | null;
   onSelectReceipt: (receiptId: number) => void;
   onNewScan: () => void;
 }
 
-export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceipt, onNewScan }) => {
+export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ selectedYear, onSelectReceipt, onNewScan }) => {
   const [receipts, setReceipts] = useState<ReceiptListItem[]>([]);
   const [booksSummary, setBooksSummary] = useState<BooksSummaryResponse | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string>(''); // '' = All, or book_number, or '__UNASSIGNED__'
@@ -68,10 +69,11 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
           q: searchQuery || undefined,
           status: statusFilter || undefined,
           book_number: activeFolder || undefined,
+          receipt_year: selectedYear,
           archived_only: showArchived,
-          limit: 50,
+          limit: 100,
         }),
-        shouldFetchSummary ? fetchBooksSummary().catch(() => null) : Promise.resolve(null),
+        shouldFetchSummary ? fetchBooksSummary(selectedYear).catch(() => null) : Promise.resolve(null),
       ]);
       setReceipts(listData);
       if (summaryData) {
@@ -86,7 +88,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
 
   useEffect(() => {
     loadData(selectedFolder);
-  }, [selectedFolder, statusFilter, showArchived]);
+  }, [selectedFolder, statusFilter, showArchived, selectedYear]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +103,7 @@ export const ReceiptListPage: React.FC<ReceiptListPageProps> = ({ onSelectReceip
   const handleExportExcel = (bookNo?: string) => {
     const params = new URLSearchParams();
     if (statusFilter) params.append('status_filter', statusFilter);
+    if (selectedYear) params.append('receipt_year', String(selectedYear));
     if (bookNo) {
       params.append('book_number', bookNo);
     } else if (selectedFolder) {

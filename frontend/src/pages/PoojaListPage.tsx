@@ -14,7 +14,11 @@ import {
 import { listDetailedReceipts, createReceipt } from '../services/api';
 import { Receipt } from '../types';
 
-export const PoojaListPage: React.FC = () => {
+interface PoojaListPageProps {
+  selectedYear?: number | null;
+}
+
+export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear }) => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedBook, setSelectedBook] = useState<string>('ALL');
@@ -36,13 +40,13 @@ export const PoojaListPage: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    listDetailedReceipts({ status: 'CONFIRMED', limit: 250 })
+    listDetailedReceipts({ status: 'CONFIRMED', receipt_year: selectedYear, limit: 250 })
       .then((fulls) => {
         setReceipts(fulls);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedYear]);
 
   // Compute unique books available
   const booksSummary = useMemo(() => {

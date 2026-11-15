@@ -3,7 +3,11 @@ import { Package, Truck, Printer, Clock, Filter, BookOpen, CheckSquare, Square }
 import { listDetailedReceipts } from '../services/api';
 import { Receipt } from '../types';
 
-export const DispatchPage: React.FC = () => {
+interface DispatchPageProps {
+  selectedYear?: number | null;
+}
+
+export const DispatchPage: React.FC<DispatchPageProps> = ({ selectedYear }) => {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedBook, setSelectedBook] = useState<string>('ALL');
@@ -11,13 +15,13 @@ export const DispatchPage: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    listDetailedReceipts({ status: 'CONFIRMED', limit: 200 })
+    listDetailedReceipts({ status: 'CONFIRMED', receipt_year: selectedYear, limit: 200 })
       .then((fulls) => {
         setReceipts(fulls);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedYear]);
 
   // Compute unique books available in the confirmed receipts list
   const booksSummary = useMemo(() => {

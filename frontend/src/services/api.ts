@@ -399,8 +399,10 @@ export async function resolvePincode(pincode: string): Promise<PincodeDetails | 
   }
 }
 
-export async function fetchBooksSummary(): Promise<BooksSummaryResponse> {
-  const res = await fetch(`${API_BASE}/receipts/books/summary`);
+export async function fetchBooksSummary(receipt_year?: number | null): Promise<BooksSummaryResponse> {
+  const query = new URLSearchParams();
+  if (receipt_year) query.set('receipt_year', String(receipt_year));
+  const res = await fetch(`${API_BASE}/receipts/books/summary?${query.toString()}`);
   if (!res.ok) {
     throw new Error('Failed to fetch book summary');
   }
@@ -411,6 +413,7 @@ export async function listReceipts(params?: {
   q?: string;
   status?: string;
   book_number?: string;
+  receipt_year?: number | null;
   archived_only?: boolean;
   skip?: number;
   limit?: number;
@@ -419,6 +422,7 @@ export async function listReceipts(params?: {
   if (params?.q) query.set('q', params.q);
   if (params?.status) query.set('status_filter', params.status);
   if (params?.book_number) query.set('book_number', params.book_number);
+  if (params?.receipt_year) query.set('receipt_year', String(params.receipt_year));
   if (params?.archived_only) query.set('archived_only', 'true');
   if (params?.skip) query.set('skip', String(params.skip));
   if (params?.limit) query.set('limit', String(params.limit));
@@ -433,12 +437,14 @@ export async function listReceipts(params?: {
 export async function listDetailedReceipts(params?: {
   status?: string;
   book_number?: string;
+  receipt_year?: number | null;
   skip?: number;
   limit?: number;
 }): Promise<Receipt[]> {
   const query = new URLSearchParams();
   if (params?.status) query.set('status_filter', params.status);
   if (params?.book_number) query.set('book_number', params.book_number);
+  if (params?.receipt_year) query.set('receipt_year', String(params.receipt_year));
   if (params?.skip) query.set('skip', String(params.skip));
   if (params?.limit) query.set('limit', String(params.limit));
 
@@ -447,6 +453,44 @@ export async function listDetailedReceipts(params?: {
     throw new Error('Failed to fetch detailed receipts');
   }
   return res.json();
+}
+
+export async function renameBook(
+  bookNumber: string,
+  newBookNumber: string,
+  receiptYear?: number | null
+): Promise<{ message: string; count: number; new_book_number: string }> {
+  const res = await fetch(`${API_BASE}/receipts/books/${encodeURIComponent(bookNumber)}/rename`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      new_book_number: newBookNumber,
+      receipt_year: receiptYear || null,
+    }),
+  });
+  if (!res.ok) {
+    let err = 'Failed to rename book';
+    try {
+      const data = await res.json();
+      err = data.detail || err;
+    } catch {}
+    throw new Error(err);
+  }
+  return res.json();
+}
+
+export function getExportExcelUrl(options?: {
+  bookNumber?: string;
+  receiptYear?: number | null;
+  statusFilter?: string;
+  exportType?: 'all' | 'sankalpam' | 'dispatch';
+}): string {
+  const params = new URLSearchParams();
+  if (options?.bookNumber) params.set('book_number', options.bookNumber);
+  if (options?.receiptYear) params.set('receipt_year', String(options.receiptYear));
+  if (options?.statusFilter) params.set('status_filter', options.statusFilter);
+  if (options?.exportType) params.set('export_type', options.exportType);
+  return `${API_BASE}/receipts/export/excel?${params.toString()}`;
 }
 
 export async function getReceipt(id: number): Promise<Receipt> {

@@ -2,20 +2,35 @@ import React, { useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './pages/LoginPage';
+import { BooksPage } from './pages/BooksPage';
 import { ScanPage } from './pages/ScanPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ReceiptListPage } from './pages/ReceiptListPage';
 import { PoojaListPage } from './pages/PoojaListPage';
 import { DispatchPage } from './pages/DispatchPage';
-import { GothramMasterPage } from './pages/GothramMasterPage';
 import { PipelineResult } from './types';
 import { getReceipt, deleteStagedReceipt, getStoredAuth, logoutUser, AuthUser } from './services/api';
 import { deleteStoredReceipt } from './services/receiptStore';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredAuth());
-  const [currentTab, setCurrentTab] = useState<string>('scan');
+  const [currentTab, setCurrentTab] = useState<string>('books');
   const [activeModel, setActiveModel] = useState<string>('gemini-3.5-flash-lite');
+
+  // Global Year Selector (defaults to 2026 or persisted selection)
+  const [selectedYear, setSelectedYear] = useState<number | null>(() => {
+    const saved = localStorage.getItem('trikuta_selected_year');
+    return saved !== null && saved !== '' ? Number(saved) : 2026;
+  });
+
+  const handleSelectYear = (year: number | null) => {
+    setSelectedYear(year);
+    if (year !== null) {
+      localStorage.setItem('trikuta_selected_year', String(year));
+    } else {
+      localStorage.removeItem('trikuta_selected_year');
+    }
+  };
 
   // OCR Review State
   const [activeReceiptId, setActiveReceiptId] = useState<number | null>(null);
@@ -31,6 +46,9 @@ export const App: React.FC = () => {
     filename?: string,
     storedReceiptId?: string
   ) => {
+    if (selectedYear) {
+      result.receipt_year = selectedYear;
+    }
     setActiveReceiptId(null);
     setActiveStoredReceiptId(storedReceiptId);
     setActiveOCRResult(result);
@@ -66,9 +84,9 @@ export const App: React.FC = () => {
     setActiveOCRResult(null);
     setActiveImageUrl(null);
     setActiveReceiptId(null);
-    setSuccessBanner(`Receipt #${receiptId} has been successfully recorded and removed from the scan queue.`);
+    setSuccessBanner(`Receipt #${receiptId} has been successfully recorded and confirmed.`);
     setTimeout(() => setSuccessBanner(null), 6000);
-    setCurrentTab('receipts');
+    setCurrentTab('books');
   };
 
   const handleSelectReceiptFromList = async (receiptId: number) => {
@@ -129,6 +147,9 @@ export const App: React.FC = () => {
           imgUrl = `/api/v1/storage/${raw}`;
         }
       }
+      if (!imgUrl) {
+        imgUrl = '/samples/sample_img4.jpeg';
+      }
 
       setActiveReceiptId(receipt.id);
       setActiveOCRResult(mappedResult);
@@ -156,6 +177,8 @@ export const App: React.FC = () => {
           logoutUser();
           setCurrentUser(null);
         }}
+        selectedYear={selectedYear}
+        onSelectYear={handleSelectYear}
       />
 
       {/* Global Success Banner */}
@@ -168,6 +191,18 @@ export const App: React.FC = () => {
 
       {/* Main Tab Content */}
       <main className="flex-1">
+        {currentTab === 'books' && (
+          <ErrorBoundary fallbackTitle="Books View Encountered an Error">
+            <BooksPage
+              selectedYear={selectedYear}
+              onSelectReceipt={handleSelectReceiptFromList}
+              onNewScanForBook={(_bookNum) => {
+                setCurrentTab('scan');
+              }}
+            />
+          </ErrorBoundary>
+        )}
+
         {currentTab === 'scan' && (
           <ErrorBoundary fallbackTitle="Scanner Encountered an Error" onReset={() => setCurrentTab('scan')}>
             <ScanPage
@@ -206,6 +241,7 @@ export const App: React.FC = () => {
         {currentTab === 'receipts' && (
           <ErrorBoundary fallbackTitle="Receipts View Encountered an Error">
             <ReceiptListPage
+              selectedYear={selectedYear}
               onSelectReceipt={handleSelectReceiptFromList}
               onNewScan={() => setCurrentTab('scan')}
             />
@@ -214,19 +250,13 @@ export const App: React.FC = () => {
 
         {currentTab === 'pooja' && (
           <ErrorBoundary fallbackTitle="Sankalpam View Encountered an Error">
-            <PoojaListPage />
+            <PoojaListPage selectedYear={selectedYear} />
           </ErrorBoundary>
         )}
 
         {currentTab === 'dispatch' && (
           <ErrorBoundary fallbackTitle="Dispatch View Encountered an Error">
-            <DispatchPage />
-          </ErrorBoundary>
-        )}
-
-        {currentTab === 'gothrams' && (
-          <ErrorBoundary fallbackTitle="Gothrams View Encountered an Error">
-            <GothramMasterPage />
+            <DispatchPage selectedYear={selectedYear} />
           </ErrorBoundary>
         )}
       </main>

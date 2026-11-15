@@ -15,6 +15,7 @@ import {
   Search,
   Users,
   MapPin,
+  Upload,
 } from 'lucide-react';
 import { PipelineResult, Person, Phone } from '../types';
 import { createReceipt, updateReceipt, searchGothrams, resolvePincode, PincodeDetails } from '../services/api';
@@ -42,19 +43,45 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   onSaved,
 }) => {
   const [currentImgSrc, setCurrentImgSrc] = useState(imageUrl);
+  const [imgLoadFailed, setImgLoadFailed] = useState(false);
+  const [imgAttempt, setImgAttempt] = useState(0);
+  const replaceFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setCurrentImgSrc(imageUrl);
+    setImgLoadFailed(false);
+    setImgAttempt(0);
   }, [imageUrl]);
 
   const handleImageError = () => {
-    if (sourceFilename) {
-      const cleanName = sourceFilename.replace(/^.*[\\\/]/, '');
-      if (!currentImgSrc.includes('/api/v1/storage/')) {
-        setCurrentImgSrc(`/api/v1/storage/${sourceFilename}`);
-      } else if (!currentImgSrc.includes('/static/samples/')) {
-        setCurrentImgSrc(`/static/samples/${cleanName}`);
+    if (imgAttempt === 0) {
+      setImgAttempt(1);
+      if (sourceFilename) {
+        const cleanName = sourceFilename.replace(/^.*[\\\/]/, '');
+        setCurrentImgSrc(`/api/v1/storage/${cleanName}`);
+      } else {
+        setCurrentImgSrc('/samples/sample_img4.jpeg');
       }
+    } else if (imgAttempt === 1) {
+      setImgAttempt(2);
+      const cleanName = (sourceFilename || '').replace(/^.*[\\\/]/, '');
+      if (cleanName.includes('sample_img')) {
+        setCurrentImgSrc(`/samples/${cleanName}`);
+      } else {
+        setCurrentImgSrc('/samples/sample_img4.jpeg');
+      }
+    } else {
+      setImgLoadFailed(true);
+    }
+  };
+
+  const handleReplaceImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setCurrentImgSrc(url);
+      setImgLoadFailed(false);
+      setImgAttempt(0);
     }
   };
 
@@ -732,6 +759,13 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
           </div>
 
           {/* Interactive Wide Viewer (Scroll Wheel Zoom & Click-and-Drag Pan) */}
+          <input
+            ref={replaceFileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleReplaceImage}
+          />
           <div
             ref={viewerRef}
             onMouseDown={handleMouseDown}
@@ -739,25 +773,66 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onDoubleClick={handleDoubleClick}
-            className={`relative h-[360px] sm:h-[400px] md:h-[440px] bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center p-1 border border-gray-300 select-none ${
+            className={`relative min-h-[360px] h-[360px] sm:h-[400px] md:h-[440px] bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center p-1 border border-gray-300 select-none ${
               isPanning ? 'cursor-grabbing' : 'cursor-grab'
             }`}
             title="Scroll mouse wheel inside to zoom • Click & drag to pan • Double-click to toggle 2x zoom"
           >
-            <div
-              className="transition-transform duration-75 origin-center will-change-transform flex items-center justify-center w-full h-full"
-              style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rotation}deg) scale(${zoomLevel})`,
-              }}
-            >
-              <img
-                src={currentImgSrc}
-                onError={handleImageError}
-                alt="Receipt Original"
-                draggable={false}
-                className="max-h-full max-w-full w-full object-contain shadow-2xl rounded pointer-events-none"
-              />
-            </div>
+            {imgLoadFailed ? (
+              <div className="w-full h-full p-4 flex flex-col items-center justify-center text-center bg-gradient-to-br from-amber-950/60 via-slate-900 to-black select-text">
+                <div className="max-w-md w-full bg-amber-50/95 border-2 border-amber-300 rounded-xl p-5 shadow-2xl text-slate-800">
+                  <div className="flex items-center justify-between border-b border-amber-200 pb-2 mb-3">
+                    <span className="text-xs font-bold text-amber-900 font-telugu">🕉️ శ్రీ త్రికోటేశ్వర స్వామి దేవస్థానము</span>
+                    <span className="text-xs font-mono font-bold bg-amber-200 px-2 py-0.5 rounded text-amber-900">
+                      {bookNumber ? `Book #${bookNumber}` : ''} #{receiptNo || 'Receipt'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-left space-y-1.5 text-gray-700">
+                    <div>
+                      <span className="font-semibold text-gray-900">Devotee:</span>{' '}
+                      {persons[0]?.given_name_en || persons[0]?.given_name_te || 'Devotee'} {surnameEn || surnameTe || ''}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-gray-900">Gothram:</span> {gothramEn || '—'}{' '}
+                      {gothramTe ? `(${gothramTe})` : ''}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-gray-900">Period:</span>{' '}
+                      {abhishekamFrom || '—'} to {abhishekamTo || '—'}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-gray-900">Amount:</span> ₹{amount || '100'}
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-2">
+                    <span className="text-[10px] text-amber-800 font-medium">Digital Receipt Slip (Scan file offline)</span>
+                    <button
+                      type="button"
+                      onClick={() => replaceFileInputRef.current?.click()}
+                      className="px-3 py-1 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold rounded shadow transition-colors flex items-center space-x-1"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Attach Photo</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="transition-transform duration-75 origin-center will-change-transform flex items-center justify-center w-full h-full"
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rotation}deg) scale(${zoomLevel})`,
+                }}
+              >
+                <img
+                  src={currentImgSrc}
+                  onError={handleImageError}
+                  alt="Receipt Original"
+                  draggable={false}
+                  className="max-h-full max-w-full w-full object-contain shadow-2xl rounded pointer-events-none"
+                />
+              </div>
+            )}
 
             {/* Quick Helper Floating Badge */}
             <div className="absolute bottom-2 left-2 pointer-events-none bg-slate-900/85 backdrop-blur-sm text-[10px] text-amber-200/90 px-2.5 py-1 rounded-md border border-slate-700/60 flex items-center space-x-1.5 shadow">

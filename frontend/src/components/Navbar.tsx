@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, FileText, Flame, Package, BookOpen, Sparkles, CheckCircle2, LogOut, User, KeyRound, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Camera, FileText, Flame, Package, Folder, Sparkles, CheckCircle2, LogOut, User, KeyRound, X, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
 import { AuthUser, changePassword } from '../services/api';
 
 interface NavbarProps {
@@ -8,6 +8,8 @@ interface NavbarProps {
   activeModel: string;
   currentUser?: AuthUser | null;
   onLogout?: () => void;
+  selectedYear: number | null;
+  onSelectYear: (year: number | null) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -16,6 +18,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeModel,
   currentUser,
   onLogout,
+  selectedYear,
+  onSelectYear,
 }) => {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -57,11 +61,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
   const tabs = [
+    { id: 'books', label: 'Books', telugu: 'పుస్తకాలు', icon: Folder },
     { id: 'scan', label: 'Scan & OCR', telugu: 'రసీదు స్కాన్', icon: Camera },
     { id: 'receipts', label: 'Receipts', telugu: 'రసీదుల జాబితా', icon: FileText },
     { id: 'pooja', label: 'Sankalpam', telugu: 'పూజా సంకల్పం', icon: Flame },
     { id: 'dispatch', label: 'Dispatch', telugu: 'ప్రసాదం పంపిణీ', icon: Package },
-    { id: 'gothrams', label: 'Gothrams (2,099)', telugu: 'గోత్రాలు', icon: BookOpen },
   ];
 
   return (
@@ -113,8 +117,26 @@ export const Navbar: React.FC<NavbarProps> = ({
             })}
           </nav>
 
-          {/* Model Status Badge */}
-          <div className="flex items-center space-x-3">
+          {/* Global Year Selector & Model & Auth */}
+          <div className="flex items-center space-x-2.5">
+            {/* Year Selector */}
+            <div className="flex items-center space-x-1.5 bg-black/30 hover:bg-black/45 px-2.5 py-1.5 rounded-lg border border-amber-400/40 text-xs shadow-inner">
+              <Calendar className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
+              <span className="text-amber-200 font-semibold text-[11px] hidden xl:inline">సంవత్సరం:</span>
+              <select
+                value={selectedYear ?? ''}
+                onChange={(e) => onSelectYear(e.target.value ? Number(e.target.value) : null)}
+                className="bg-transparent text-amber-100 font-bold font-mono text-xs focus:outline-none cursor-pointer"
+                title="Global Year Filter - filters all books, receipts, and scans"
+              >
+                <option value="" className="text-gray-900 bg-white">All Years (అన్నీ)</option>
+                <option value="2027" className="text-gray-900 bg-white">2027</option>
+                <option value="2026" className="text-gray-900 bg-white">2026</option>
+                <option value="2025" className="text-gray-900 bg-white">2025</option>
+                <option value="2024" className="text-gray-900 bg-white">2024</option>
+              </select>
+            </div>
+
             <div className="hidden lg:flex items-center space-x-2 bg-black/25 px-3 py-1.5 rounded-full border border-amber-400/30 text-xs">
               <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
               <span className="text-amber-100 font-mono text-[11px]">{activeModel}</span>
@@ -164,7 +186,21 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Mobile Navigation bar */}
-        <div className="flex md:hidden overflow-x-auto py-2 space-x-2 border-t border-amber-600/40">
+        <div className="flex md:hidden overflow-x-auto py-2 space-x-2 border-t border-amber-600/40 items-center">
+          <div className="flex items-center space-x-1 bg-black/30 px-2 py-1 rounded-md text-xs border border-amber-400/40 flex-shrink-0">
+            <Calendar className="w-3 h-3 text-amber-300" />
+            <select
+              value={selectedYear ?? ''}
+              onChange={(e) => onSelectYear(e.target.value ? Number(e.target.value) : null)}
+              className="bg-transparent text-amber-100 font-bold font-mono text-[11px] focus:outline-none"
+            >
+              <option value="" className="text-gray-900 bg-white">All</option>
+              <option value="2027" className="text-gray-900 bg-white">2027</option>
+              <option value="2026" className="text-gray-900 bg-white">2026</option>
+              <option value="2025" className="text-gray-900 bg-white">2025</option>
+              <option value="2024" className="text-gray-900 bg-white">2024</option>
+            </select>
+          </div>
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
