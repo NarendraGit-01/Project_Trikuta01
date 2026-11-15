@@ -194,9 +194,13 @@ def process_sample_receipt(req: ProcessSampleRequest):
     proc_sample_path = SAMPLES_DIR / "processed" / req.sample_filename
     sample_path = proc_sample_path if proc_sample_path.exists() else (SAMPLES_DIR / req.sample_filename)
     if not sample_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sample file '{req.sample_filename}' not found."
+        return PipelineResult(
+            receipt_no=None,
+            is_model_failure=True,
+            extraction_error=f"Sample file '{req.sample_filename}' not found.",
+            needs_human_check=[f"Sample file '{req.sample_filename}' not found on server."],
+            overall_confidence="RED",
+            intermediate_passes={"error": "sample_not_found"},
         )
 
     model_to_use = req.model_name or settings.GEMINI_PRIMARY_MODEL
@@ -208,6 +212,7 @@ def process_sample_receipt(req: ProcessSampleRequest):
         )
         return check_and_annotate_duplicate(result)
     except Exception as e:
+        logger.error(f"Sample OCR extraction error: {e}", exc_info=True)
         # Fallback to secondary model if primary fails
         if settings.GEMINI_FALLBACK_MODEL and model_to_use != settings.GEMINI_FALLBACK_MODEL:
             try:
@@ -218,8 +223,15 @@ def process_sample_receipt(req: ProcessSampleRequest):
                 )
                 return check_and_annotate_duplicate(result)
             except Exception as fb_err:
-                raise HTTPException(status_code=500, detail=f"OCR failed on fallback: {str(fb_err)}")
-        raise HTTPException(status_code=500, detail=f"OCR execution failed: {str(e)}")
+                logger.error(f"Sample OCR fallback failed: {fb_err}", exc_info=True)
+        return PipelineResult(
+            receipt_no=None,
+            is_model_failure=True,
+            extraction_error=str(e),
+            needs_human_check=[f"AI model error: {str(e)}"],
+            overall_confidence="RED",
+            intermediate_passes={"error": str(e)},
+        )
 
 
 @router.post("/process-upload", response_model=PipelineResult)
@@ -233,7 +245,13 @@ async def process_uploaded_receipt(
     import io
     contents = await file.read()
     if not contents:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        return PipelineResult(
+            receipt_no=None,
+            is_model_failure=True,
+            extraction_error="Uploaded file is empty.",
+            needs_human_check=["Uploaded file has 0 bytes."],
+            overall_confidence="RED",
+        )
 
     # Compute SHA-256 hash for duplicate detection
     img_hash = hashlib.sha256(contents).hexdigest()
@@ -246,43 +264,57 @@ async def process_uploaded_receipt(
         finally:
             db.close()
     except Exception as db_err:
-        print(f"Warning: Duplicate check DB query skipped due to error: {db_err}")
+        logger.warning(f"Duplicate check DB query skipped due to error: {db_err}")
 
     if existing:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": f"This image has already been uploaded (Receipt #{existing.receipt_no}).",
-                "existing_receipt_id": existing.id,
-                "receipt_no": existing.receipt_no or "",
-                "status": existing.status,
-                "created_at": existing.created_at.isoformat() if existing.created_at else None,
-            },
+        return PipelineResult(
+            receipt_no=existing.receipt_no,
+            is_duplicate=True,
+            duplicate_receipt_id=existing.id,
+            duplicate_status=existing.status,
+            duplicate_warning=f"Receipt #{existing.receipt_no or existing.id} already exists in the temple database (Status: {existing.status}, Record ID: #{existing.id}).",
+            needs_human_check=[f"DUPLICATE DETECTED: Receipt #{existing.receipt_no or existing.id} is already stored in database (Status: {existing.status}, ID: #{existing.id})"],
+            overall_confidence="RED",
+            intermediate_passes={"image_hash": img_hash, "stored_original_path": existing.original_image_path or ""},
         )
 
     from backend.app.pipeline.translation import apply_translation
-
     from backend.pipeline.image_loader import prepare_image
 
-
-    pil_img = prepare_image(contents)
-    cropped_pil, rot, box = auto_orient_and_crop(pil_img)
-
-    # Save cropped slip to storage
-    buf = io.BytesIO()
-    cropped_pil.save(buf, format="JPEG", quality=95)
-    storage = get_storage()
-    storage_path = storage.save_file(buf.getvalue(), prefix="uploads", extension=".jpg")
-
-    model_to_use = model_name or settings.GEMINI_PRIMARY_MODEL
     try:
-        result = process_receipt(
-            image_input=cropped_pil,
-            model_name=model_to_use,
-            skip_transcription=skip_transcription
-        )
-        # Apply translation / language detection
-        result = apply_translation(result)
+        pil_img = prepare_image(contents)
+        cropped_pil, rot, box = auto_orient_and_crop(pil_img)
+
+        # Save cropped slip to storage
+        buf = io.BytesIO()
+        cropped_pil.save(buf, format="JPEG", quality=95)
+        storage = get_storage()
+        storage_path = storage.save_file(buf.getvalue(), prefix="uploads", extension=".jpg")
+
+        model_to_use = model_name or settings.GEMINI_PRIMARY_MODEL
+        try:
+            result = process_receipt(
+                image_input=cropped_pil,
+                model_name=model_to_use,
+                skip_transcription=skip_transcription
+            )
+        except Exception as proc_err:
+            logger.error(f"Primary model OCR failed: {proc_err}", exc_info=True)
+            if settings.GEMINI_FALLBACK_MODEL and model_to_use != settings.GEMINI_FALLBACK_MODEL:
+                result = process_receipt(
+                    image_input=cropped_pil,
+                    model_name=settings.GEMINI_FALLBACK_MODEL,
+                    skip_transcription=skip_transcription
+                )
+            else:
+                raise proc_err
+
+        # Apply translation / language detection safely
+        try:
+            result = apply_translation(result)
+        except Exception as t_err:
+            logger.warning(f"apply_translation error: {t_err}")
+
         # Attach hash and optional book number for later DB insertion
         result.intermediate_passes["image_hash"] = img_hash
         if book_number:
@@ -290,18 +322,15 @@ async def process_uploaded_receipt(
         result.intermediate_passes["stored_original_path"] = storage_path
         return check_and_annotate_duplicate(result)
     except Exception as e:
-        if settings.GEMINI_FALLBACK_MODEL and model_to_use != settings.GEMINI_FALLBACK_MODEL:
-            try:
-                result = process_receipt(
-                    image_input=cropped_pil,
-                    model_name=settings.GEMINI_FALLBACK_MODEL,
-                    skip_transcription=skip_transcription
-                )
-                result.intermediate_passes["stored_original_path"] = storage_path
-                return check_and_annotate_duplicate(result)
-            except Exception as fb_err:
-                raise HTTPException(status_code=500, detail=f"OCR failed on fallback: {str(fb_err)}")
-        raise HTTPException(status_code=500, detail=f"OCR execution failed: {str(e)}")
+        logger.error(f"OCR execution failed for uploaded receipt: {e}", exc_info=True)
+        return PipelineResult(
+            receipt_no=None,
+            is_model_failure=True,
+            extraction_error=str(e),
+            needs_human_check=[f"AI model error: {str(e)}"],
+            overall_confidence="RED",
+            intermediate_passes={"error": str(e), "image_hash": img_hash},
+        )
 
 
 class BatchItemResult(BaseModel):
@@ -563,7 +592,7 @@ def delete_staged_receipt(staged_id: int, delete_file: bool = False):
     try:
         item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
         if not item:
-            raise HTTPException(status_code=404, detail="Staged item not found")
+            return {"status": "deleted", "id": staged_id, "already_deleted": True}
         file_path = item.file_path
         db.delete(item)
         db.commit()
@@ -588,7 +617,14 @@ def process_staged_receipt(
     try:
         item = db.query(StagedImage).filter(StagedImage.id == staged_id).first()
         if not item:
-            raise HTTPException(status_code=404, detail="Staged item not found")
+            return PipelineResult(
+                receipt_no=None,
+                is_model_failure=True,
+                extraction_error="Staged receipt item not found or already processed.",
+                needs_human_check=["Staged receipt was not found in queue."],
+                overall_confidence="RED",
+                intermediate_passes={"staged_id": staged_id},
+            )
 
         storage = get_storage()
         contents = storage.get(item.file_path)
@@ -601,33 +637,96 @@ def process_staged_receipt(
                     contents = f.read()
 
         if not contents:
-            raise HTTPException(status_code=404, detail="Staged image file could not be retrieved from storage")
+            return PipelineResult(
+                receipt_no=None,
+                is_model_failure=True,
+                extraction_error="Staged image file could not be retrieved from storage. Please re-upload.",
+                needs_human_check=["Image file missing from storage."],
+                overall_confidence="RED",
+                intermediate_passes={"staged_id": staged_id},
+            )
+
+        # Fast duplicate check by image_hash before running expensive LLM call
+        if item.image_hash:
+            existing = db.query(Receipt).filter(Receipt.image_hash == item.image_hash).first()
+            if existing:
+                return PipelineResult(
+                    receipt_no=existing.receipt_no,
+                    is_duplicate=True,
+                    duplicate_receipt_id=existing.id,
+                    duplicate_status=existing.status,
+                    duplicate_warning=f"Receipt #{existing.receipt_no or existing.id} already exists in the temple database (Status: {existing.status}, Record ID: #{existing.id}).",
+                    needs_human_check=[f"DUPLICATE DETECTED: Receipt #{existing.receipt_no or existing.id} is already stored in database (Status: {existing.status}, ID: #{existing.id})"],
+                    overall_confidence="RED",
+                    intermediate_passes={"image_hash": item.image_hash, "stored_original_path": item.file_path, "staged_id": staged_id},
+                )
 
         from backend.app.pipeline.translation import apply_translation
         from backend.pipeline.image_loader import prepare_image
 
-        pil_img = prepare_image(contents)
+        try:
+            pil_img = prepare_image(contents)
+        except Exception as img_err:
+            logger.error(f"Image preparation failed for staged {staged_id}: {img_err}", exc_info=True)
+            return PipelineResult(
+                receipt_no=None,
+                is_model_failure=True,
+                extraction_error=f"Image decoding failed: {str(img_err)}",
+                needs_human_check=[f"Image decode error: {str(img_err)}"],
+                overall_confidence="RED",
+                intermediate_passes={"staged_id": staged_id},
+            )
 
         model_to_use = model_name or settings.GEMINI_PRIMARY_MODEL
-        result = process_receipt(
-            image_input=pil_img,
-            model_name=model_to_use,
-            skip_transcription=skip_transcription,
-        )
-        result = apply_translation(result)
+        try:
+            result = process_receipt(
+                image_input=pil_img,
+                model_name=model_to_use,
+                skip_transcription=skip_transcription,
+            )
+        except Exception as proc_err:
+            logger.error(f"process_receipt failed for staged {staged_id}: {proc_err}", exc_info=True)
+            result = PipelineResult(
+                receipt_no=None,
+                is_model_failure=True,
+                extraction_error=str(proc_err),
+                needs_human_check=[f"AI extraction error: {str(proc_err)}"],
+                overall_confidence="RED",
+            )
+
+        if not result.is_model_failure:
+            try:
+                result = apply_translation(result)
+            except Exception as t_err:
+                logger.warning(f"apply_translation failed for staged {staged_id}: {t_err}")
+
         result.intermediate_passes["stored_original_path"] = item.file_path
         result.intermediate_passes["image_hash"] = item.image_hash
         result.intermediate_passes["staged_id"] = staged_id
         if item.book_number:
             result.intermediate_passes["book_number"] = item.book_number
 
-        result = check_and_annotate_duplicate(result)
+        result = check_and_annotate_duplicate(result, db=db)
 
         # Mark as EXTRACTED (stays visible in queue until operator reviews & saves to DB)
-        item.status = "EXTRACTED"
-        db.commit()
+        try:
+            item.status = "EXTRACTED"
+            db.commit()
+        except Exception as c_err:
+            logger.warning(f"Failed to update staged item status: {c_err}")
+            db.rollback()
 
         return result
+    except Exception as unhandled:
+        logger.error(f"Unhandled error in process_staged_receipt {staged_id}: {unhandled}", exc_info=True)
+        return PipelineResult(
+            receipt_no=None,
+            is_model_failure=True,
+            extraction_error=f"Processing error: {str(unhandled)}",
+            needs_human_check=[f"Processing error: {str(unhandled)}"],
+            overall_confidence="RED",
+            intermediate_passes={"staged_id": staged_id, "error": str(unhandled)},
+        )
     finally:
         db.close()
 

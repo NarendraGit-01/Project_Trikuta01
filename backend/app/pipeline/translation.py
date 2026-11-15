@@ -55,30 +55,41 @@ def _translate_with_gemini(text: str, target_lang: str) -> str:
     """Translate *text* to *target_lang* ('en' or 'te') using Gemini.
     Simple prompt – Gemini will return the translated string.
     """
-    llm = get_gemini_client()
-    if target_lang == 'en':
-        prompt = f"Translate the following Telugu text to proper English spelling, preserving proper names: {text}"
-    else:
-        prompt = f"Translate the following English text to Telugu, preserving proper names: {text}"
-    response = llm.invoke([{"role": "user", "content": prompt}])
-    return _extract_text(response)
+    try:
+        llm = get_gemini_client()
+        if target_lang == 'en':
+            prompt = f"Translate the following Telugu text to proper English spelling, preserving proper names: {text}"
+        else:
+            prompt = f"Translate the following English text to Telugu, preserving proper names: {text}"
+        response = llm.invoke([{"role": "user", "content": prompt}])
+        return _extract_text(response)
+    except Exception as e:
+        logger.warning(f"Gemini translation failed for '{text}': {e}")
+        return text
 
 def _normalize_name(name: str, source_lang: str) -> str:
     """Normalize a name using Gemini to a clean English spelling.
     For Telugu source, ask Gemini to give the canonical English version.
     For English source, we can just return the name.
     """
-    llm = get_gemini_client()
-    if source_lang == 'te':
-        prompt = f"Give the canonical English spelling for the Telugu name '{name}'."
-        response = llm.invoke([{"role": "user", "content": prompt}])
-        return _extract_text(response)
-    return name
+    try:
+        llm = get_gemini_client()
+        if source_lang == 'te':
+            prompt = f"Give the canonical English spelling for the Telugu name '{name}'."
+            response = llm.invoke([{"role": "user", "content": prompt}])
+            return _extract_text(response)
+        return name
+    except Exception as e:
+        logger.warning(f"Normalize name failed for '{name}': {e}")
+        return name
 
 def apply_translation(result: PipelineResult) -> PipelineResult:
     """Detect language of extracted fields and fill bilingual equivalents.
     Safely non-blocking — skips gracefully on any error or translation timeout.
     """
+    if getattr(result, "is_model_failure", False):
+        return result
+
     try:
         # Address
         if getattr(result, "address", None):

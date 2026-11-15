@@ -32,6 +32,7 @@ interface ReviewPageProps {
   imageUrl: string;
   sourceFilename?: string;
   existingReceiptId?: number | null;
+  storedReceiptId?: string;
   onBackToScan: () => void;
   onSaved: (receiptId: number) => void;
   onNextReview?: (result: PipelineResult, imageUrl: string, filename?: string, storedReceiptId?: string) => void;
@@ -42,6 +43,7 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
   imageUrl,
   sourceFilename,
   existingReceiptId,
+  storedReceiptId,
   onBackToScan,
   onSaved,
   onNextReview,
@@ -551,6 +553,9 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
     if (stagedId) {
       await deleteStagedReceipt(stagedId).catch(() => {});
     }
+    if (storedReceiptId) {
+      await deleteStoredReceipt(storedReceiptId).catch(() => {});
+    }
 
     const cleanNo = receiptNo.trim() || result.receipt_no;
     const allStored = await getAllStoredReceipts().catch(() => []);
@@ -687,6 +692,9 @@ export const ReviewPage: React.FC<ReviewPageProps> = ({
         const stagedId = (result.intermediate_passes as any)?.staged_id;
         if (stagedId) {
           await deleteStagedReceipt(stagedId).catch(() => {});
+        }
+        if (storedReceiptId) {
+          await deleteStoredReceipt(storedReceiptId).catch(() => {});
         }
 
         // 2. Purge from local IndexedDB

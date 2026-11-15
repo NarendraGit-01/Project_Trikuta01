@@ -150,6 +150,7 @@ export const ScanPage: React.FC<ScanPageProps> = ({
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [skipTranscription, setSkipTranscription] = useState<boolean>(true);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
 
   // Zoom & Pan states for Image Preview
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -721,35 +722,9 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         setReceipts((prev) => prev.filter((r) => r.id !== item.id));
 
         // 3. User feedback banner
-        const dupNotice = `రశీదు #${result.receipt_no || 'Duplicate'} ఇప్పటికే నిల్వ చేయబడింది (Receipt #${result.receipt_no} already exists in database as Record #${result.duplicate_receipt_id}, Status: ${result.duplicate_status || 'CONFIRMED'}). Entry removed from OCR queue.`;
-        setErrorNotice(dupNotice);
-
-        // 4. ONLY advance to review if this was a single OCR execution (NOT batch!)
-        // In batch mode, we continue uninterrupted to process all remaining items.
-        if (autoNavigateToReview) {
-          const allStored = await getAllStoredReceipts().catch(() => []);
-          const nextReadyForReview = allStored.find(
-            (r) => r.status === 'SUCCESS' && r.result && !r.result.is_duplicate && !r.reviewed && r.id !== item.id
-          );
-
-          if (nextReadyForReview && nextReadyForReview.result) {
-            const nextUrl =
-              nextReadyForReview.previewUrl ||
-              nextReadyForReview.imageUrl ||
-              (nextReadyForReview.blob ? URL.createObjectURL(nextReadyForReview.blob) : '');
-            setSelectedId(nextReadyForReview.id);
-            onOCRComplete(
-              nextReadyForReview.result,
-              nextUrl,
-              nextReadyForReview.filename,
-              nextReadyForReview.id
-            );
-          } else {
-            // No reviews pending: select next pending item on OCR scan screen, or null
-            const nextPending = allStored.find((r) => r.status === 'PENDING' && r.id !== item.id) || allStored[0];
-            setSelectedId(nextPending ? nextPending.id : null);
-          }
-        }
+        const dupNotice = `🕉️ రశీదు #${result.receipt_no || 'Duplicate'} ఇప్పటికే దేవస్థానం డేటాబేస్‌లో ఉన్నందున క్యూ నుండి తొలగించబడింది (Receipt #${result.receipt_no || ''} was deleted from OCR queue as it already exists in database as Record #${result.duplicate_receipt_id || ''}, Status: ${result.duplicate_status || 'CONFIRMED'}).`;
+        setDuplicateNotice(dupNotice);
+        setErrorNotice(null);
         return;
       }
 
@@ -795,6 +770,24 @@ export const ScanPage: React.FC<ScanPageProps> = ({
       clearInterval(timer);
       setIsProcessingSingle(false);
       const errMsg = err.message || 'OCR processing failed. Please verify API key and connection.';
+
+      // Check if error was caused by receipt duplicacy
+      if (
+        errMsg.startsWith('DUPLICATE:') ||
+        errMsg.toLowerCase().includes('already been uploaded') ||
+        errMsg.toLowerCase().includes('already exists')
+      ) {
+        if (item.stagedId) {
+          await deleteStagedReceipt(item.stagedId).catch(() => {});
+        }
+        await deleteStoredReceipt(item.id).catch(() => {});
+        setReceipts((prev) => prev.filter((r) => r.id !== item.id));
+        const cleanMsg = errMsg.replace(/^DUPLICATE:\s*/i, '');
+        setDuplicateNotice(`🕉️ రశీదు ఇప్పటికే దేవస్థానం డేటాబేస్‌లో ఉన్నందున క్యూ నుండి తొలగించబడింది (${cleanMsg}).`);
+        setErrorNotice(null);
+        return;
+      }
+
       setErrorNotice(errMsg);
 
       const errItem: StoredReceiptItem = { ...item, status: 'ERROR', error: errMsg };
@@ -1093,6 +1086,28 @@ export const ScanPage: React.FC<ScanPageProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Duplicate Deleted Temple Notification Banner */}
+        {duplicateNotice && (
+          <div className="mb-4 p-4 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-amber-400 rounded-2xl flex items-start space-x-3 text-amber-950 text-xs shadow-md animate-fade-in">
+            <div className="text-xl shrink-0 mt-0.5">🕉️</div>
+            <div className="flex-1">
+              <span className="font-bold text-sm block font-telugu text-amber-900">
+                రశీదు ఇప్పటికే నిల్వ చేయబడింది — క్యూ నుండి తొలగించబడింది (Duplicate Receipt Deleted from Queue)
+              </span>
+              <p className="mt-1 text-xs text-amber-800 leading-relaxed font-medium">
+                {duplicateNotice}
+              </p>
+            </div>
+            <button
+              onClick={() => setDuplicateNotice(null)}
+              className="text-amber-600 hover:text-amber-800 p-1 rounded-lg hover:bg-amber-100/60 transition-colors"
+              title="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Error Alert */}
         {errorNotice && (
