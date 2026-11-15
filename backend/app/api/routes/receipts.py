@@ -29,12 +29,10 @@ class RenameBookIn(BaseModel):
 
 def _get_receipt_image_url(r, storage) -> Optional[str]:
     path = r.original_image_path
-    if r.ocr_raw and isinstance(r.ocr_raw, dict):
-        stored = r.ocr_raw.get("stored_original_path")
-        if stored:
-            path = stored
+    if not path and r.ocr_raw and isinstance(r.ocr_raw, dict):
+        path = r.ocr_raw.get("stored_original_path")
     if not path:
-        return None
+        path = "sample_img.jpeg"
     if path.startswith("http://") or path.startswith("https://"):
         return path
     return storage.get_url(path)
