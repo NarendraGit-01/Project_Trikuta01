@@ -15,6 +15,7 @@ from backend.app.core.database import SessionLocal
 
 from backend.app.models.receipt import Receipt
 from backend.app.models.staged_image import StagedImage
+from backend.app.api.routes.receipts import normalize_book_num
 from backend.app.storage import get_storage
 from backend.pipeline.auto_crop import auto_orient_and_crop
 from backend.pipeline.image_loader import prepare_image, to_b64
@@ -264,7 +265,7 @@ async def process_uploaded_receipt(
         # Attach hash and optional book number for later DB insertion
         result.intermediate_passes["image_hash"] = img_hash
         if book_number:
-            result.intermediate_passes["book_number"] = book_number
+            result.intermediate_passes["book_number"] = normalize_book_num(book_number)
         result.intermediate_passes["stored_original_path"] = storage_path
         return check_and_annotate_duplicate(result)
     except Exception as e:
@@ -347,7 +348,7 @@ async def process_batch_receipts(
             res.intermediate_passes["stored_original_path"] = storage_path
             res.intermediate_passes["image_hash"] = img_hash
             if book_number:
-                res.intermediate_passes["book_number"] = book_number
+                res.intermediate_passes["book_number"] = normalize_book_num(book_number)
             res = check_and_annotate_duplicate(res)
             batch_results.append(BatchItemResult(
                 filename=fname,
@@ -399,7 +400,7 @@ async def stage_upload_receipts(
                 preview_url=storage.get_url(storage_path),
                 file_size=len(contents),
                 image_hash=img_hash,
-                book_number=book_number.strip() if book_number else None,
+                book_number=normalize_book_num(book_number) if book_number else None,
                 device_label=device_label or "Mobile Device",
                 status="PENDING",
             )

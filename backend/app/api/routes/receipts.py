@@ -22,6 +22,33 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
 
+def normalize_book_num(val: Optional[str]) -> str:
+    """Normalize book number (e.g. '005' -> '5', '01' -> '1', but preserve '5A' or empty)."""
+    if not val:
+        return ""
+    v = str(val).strip()
+    if not v:
+        return ""
+    if v.isdigit():
+        return str(int(v))
+    return v
+
+
+def get_book_number_filter_condition(book_number: Optional[str]):
+    """
+    Returns an SQLAlchemy filter condition matching exact, zero-stripped, or zero-padded representations.
+    e.g. if book_number is '5' or '005', it matches Receipt.book_number in ('5', '05', '005', '0005').
+    """
+    bn = (book_number or "").strip()
+    if bn in ("__UNASSIGNED__", "unassigned", "None", "-"):
+        return or_(Receipt.book_number == None, Receipt.book_number == "")
+    if bn.isdigit():
+        n = int(bn)
+        variants = {str(n), f"{n:02d}", f"{n:03d}", f"{n:04d}", bn}
+        return Receipt.book_number.in_(list(variants))
+    return Receipt.book_number == bn
+
+
 class RenameBookIn(BaseModel):
     new_book_number: str
     receipt_year: Optional[int] = None
@@ -76,7 +103,8 @@ def get_books_summary(
             pending_all += count
 
         bn = (book_num or "").strip()
-        key = bn if bn else "__UNASSIGNED__"
+        norm_bn = normalize_book_num(bn)
+        key = norm_bn if norm_bn else "__UNASSIGNED__"
         if key not in book_stats:
             book_stats[key] = {
                 "book_number": key,
@@ -94,8 +122,11 @@ def get_books_summary(
     def sort_key(item):
         k = item["book_number"]
         if k == "__UNASSIGNED__":
-            return (1, "")
-        return (0, k)
+            return (1, 999999, "")
+        try:
+            return (0, int(k), k)
+        except ValueError:
+            return (0, 999999, k)
 
     folders = sorted(book_stats.values(), key=sort_key)
 
@@ -132,11 +163,7 @@ def list_receipts(
         query = query.filter(Receipt.receipt_year == receipt_year)
 
     if isinstance(book_number, str) and book_number.strip():
-        bn = book_number.strip()
-        if bn in ("__UNASSIGNED__", "unassigned", "None", "-"):
-            query = query.filter(or_(Receipt.book_number == None, Receipt.book_number == ""))
-        else:
-            query = query.filter(Receipt.book_number == bn)
+        query = query.filter(get_book_number_filter_condition(book_number))
 
     if isinstance(status_filter, str) and status_filter.strip():
         query = query.filter(Receipt.status == status_filter.strip())
@@ -233,7 +260,7 @@ def list_detailed_receipts(
     if isinstance(status_filter, str) and status_filter.strip():
         query = query.filter(Receipt.status == status_filter.strip())
     if isinstance(book_number, str) and book_number.strip():
-        query = query.filter(Receipt.book_number == book_number.strip())
+        query = query.filter(get_book_number_filter_condition(book_number))
 
     actual_skip = skip if isinstance(skip, int) else 0
     actual_limit = limit if isinstance(limit, int) else 100
@@ -339,7 +366,7 @@ def create_receipt(
             existing.pincode = receipt_in.pincode
             existing.status = receipt_in.status
             if receipt_in.book_number:
-                existing.book_number = receipt_in.book_number
+                existing.book_number = normalize_book_num(receipt_in.book_number)
             if receipt_in.image_hash:
                 existing.image_hash = receipt_in.image_hash
             if receipt_in.original_image_path:
@@ -420,7 +447,7 @@ def create_receipt(
             address_te=receipt_in.address_te,
             pincode=receipt_in.pincode,
             status=receipt_in.status,
-            book_number=receipt_in.book_number,
+            book_number=normalize_book_num(receipt_in.book_number) if receipt_in.book_number else None,
             image_hash=receipt_in.image_hash,
             original_image_path=receipt_in.original_image_path or "uploaded_image.jpg",
             corrected_image_path=receipt_in.corrected_image_path,
@@ -824,16 +851,11 @@ def rename_book(
     db: Session = Depends(get_db)
 ):
     """Rename a book number across all receipts belonging to that book and optional year."""
-    new_num = payload.new_book_number.strip()
+    new_num = normalize_book_num(payload.new_book_number)
     if not new_num:
         raise HTTPException(status_code=400, detail="New book number cannot be empty")
 
-    clean_old = book_number.strip()
-    q = db.query(Receipt)
-    if clean_old in ("__UNASSIGNED__", "unassigned", "None", "-"):
-        q = q.filter(or_(Receipt.book_number == None, Receipt.book_number == ""))
-    else:
-        q = q.filter(Receipt.book_number == clean_old)
+    q = db.query(Receipt).filter(get_book_number_filter_condition(book_number))
 
     if payload.receipt_year is not None:
         q = q.filter(Receipt.receipt_year == payload.receipt_year)
@@ -871,11 +893,7 @@ def export_receipts_excel(
     if receipt_year is not None:
         query = query.filter(Receipt.receipt_year == receipt_year)
     if book_number and book_number.strip():
-        bn = book_number.strip()
-        if bn in ("__UNASSIGNED__", "unassigned", "None", "-"):
-            query = query.filter(or_(Receipt.book_number == None, Receipt.book_number == ""))
-        else:
-            query = query.filter(Receipt.book_number == bn)
+        query = query.filter(get_book_number_filter_condition(book_number))
     if status_filter and status_filter.strip():
         query = query.filter(Receipt.status == status_filter.strip())
 
