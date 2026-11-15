@@ -4,14 +4,9 @@ import {
   Printer,
   Filter,
   BookOpen,
-  FileSpreadsheet,
-  Upload,
   Download,
-  X,
-  CheckCircle,
-  AlertCircle,
 } from 'lucide-react';
-import { listDetailedReceipts, createReceipt, getExportExcelUrl } from '../services/api';
+import { listDetailedReceipts, getExportExcelUrl } from '../services/api';
 import { Receipt } from '../types';
 
 interface PoojaListPageProps {
@@ -24,20 +19,6 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
   const [loading, setLoading] = useState(false);
   const [selectedBook, setSelectedBook] = useState<string>('ALL');
   const [selectedGothram, setSelectedGothram] = useState<string>('ALL');
-
-  // Excel / CSV Import Modal State
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importedRows, setImportedRows] = useState<
-    Array<{
-      book_number: string;
-      receipt_no: string;
-      gothram_te: string;
-      names_te: string;
-    }>
-  >([]);
-  const [importFileName, setImportFileName] = useState<string>('');
-  const [isImporting, setIsImporting] = useState(false);
-  const [importNotice, setImportNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -106,125 +87,6 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
     window.open(url, '_blank');
   };
 
-  /* ── Import Excel / CSV Handler ── */
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (!text) return;
-      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      if (lines.length <= 1) {
-        setImportNotice('File contains no data rows.');
-        return;
-      }
-
-      // Check header or parse lines
-      const parsed: Array<{
-        book_number: string;
-        receipt_no: string;
-        gothram_te: string;
-        names_te: string;
-      }> = [];
-
-      // Skip header row if it contains keywords
-      const startIdx = lines[0].toLowerCase().includes('book') || lines[0].includes('పుస్తకం') || lines[0].includes('క్రమ') || lines[0].toLowerCase().includes('sl') ? 1 : 0;
-
-      for (let i = startIdx; i < lines.length; i++) {
-        const line = lines[i];
-        // Split with CSV comma consideration
-        const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map((p) =>
-          p.trim().replace(/^"|"$/g, '').trim()
-        );
-        if (parts.length >= 2) {
-          // If first column is serial number (e.g. 1, 2, 3), shift column indices
-          const hasSerial = parts.length >= 5 && /^\d+$/.test(parts[0]) && parts[1];
-          const bIdx = hasSerial ? 1 : 0;
-          const rIdx = hasSerial ? 2 : 1;
-          const gIdx = hasSerial ? 3 : 2;
-          const nIdx = hasSerial ? 4 : 3;
-
-          parsed.push({
-            book_number: parts[bIdx] || '',
-            receipt_no: parts[rIdx] || '',
-            gothram_te: parts[gIdx] || '',
-            names_te: parts[nIdx] || '',
-          });
-        }
-      }
-
-      setImportedRows(parsed);
-      setImportNotice(`Parsed ${parsed.length} records ready to import.`);
-    };
-    reader.readAsText(file);
-  };
-
-  const handleExecuteImport = async () => {
-    if (importedRows.length === 0) return;
-    setIsImporting(true);
-    setImportNotice(null);
-    let successCount = 0;
-
-    try {
-      for (const row of importedRows) {
-        if (!row.receipt_no) continue;
-        const names = row.names_te
-          .split(/[,+&]/)
-          .map((n) => n.trim())
-          .filter(Boolean);
-
-        const personsPayload = names.map((nm, idx) => ({
-          position: idx + 1,
-          given_name_en: nm,
-          given_name_te: nm,
-          surname_en: '',
-          surname_te: '',
-          original_ocr: nm,
-          verification_status: 'VERIFIED',
-        }));
-
-        await createReceipt({
-          receipt_no: row.receipt_no,
-          book_number: row.book_number || undefined,
-          gothram_te: row.gothram_te,
-          gothram_en: row.gothram_te,
-          status: 'CONFIRMED',
-          original_image_path: 'imported_excel_record.jpg',
-          processing_cost: 0,
-          processing_duration: 0,
-          persons: personsPayload.length > 0 ? personsPayload : [{
-            position: 1,
-            given_name_en: 'Devotee',
-            given_name_te: 'భక్తుడు',
-            surname_en: '',
-            surname_te: '',
-            original_ocr: '',
-            verification_status: 'VERIFIED',
-          }],
-          phones: [],
-        }).catch((e) => console.warn('Row import warning:', e));
-        successCount++;
-      }
-
-      setImportNotice(`Successfully imported ${successCount} records!`);
-      // Refresh list
-      const fresh = await listDetailedReceipts({ status: 'CONFIRMED', limit: 250 });
-      setReceipts(fresh);
-      setTimeout(() => {
-        setShowImportModal(false);
-        setImportedRows([]);
-        setImportFileName('');
-        setImportNotice(null);
-      }, 1500);
-    } catch (err: any) {
-      setImportNotice(`Import error: ${err.message || 'Unknown error'}`);
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 font-sans">
       {/* ── Screen-Only Header & Controls ────────────────────────── */}
@@ -263,21 +125,11 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
             <button
               onClick={handleExportExcel}
               disabled={bookFilteredReceipts.length === 0}
-              title="Export as Excel / CSV with Book Num, Receipt No, Telugu Gothram, Telugu Names"
+              title="Export as Excel with Book Num, Receipt No, Telugu Gothram, Telugu Names"
               className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white text-xs font-semibold rounded-xl shadow transition-colors"
             >
               <Download className="w-4 h-4" />
               <span>Excel ఎగుమతి (Export)</span>
-            </button>
-
-            {/* Import Excel / CSV Button */}
-            <button
-              onClick={() => setShowImportModal(true)}
-              title="Import Excel or CSV containing Book Num, Receipt No, Gothram, Devotee Names"
-              className="flex items-center space-x-1.5 px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white text-xs font-semibold rounded-xl shadow transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Excel దిగుమతి (Import)</span>
             </button>
 
             {/* Compact English Year Filter */}
@@ -417,18 +269,25 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
                   {/* Devotees List in Sankalpam Format */}
                   <div className="divide-y divide-gray-100 p-3 bg-amber-50/20 font-telugu">
                     {groupedByGothram[gothram].map((receipt) => {
-                      const allNames = receipt.persons
-                        .map((p) => {
-                          const fullNameTe = [p.surname_te, p.given_name_te]
-                            .filter(Boolean)
-                            .join(' ');
-                          const fullNameEn = [p.surname_en, p.given_name_en]
-                            .filter(Boolean)
-                            .join(' ');
-                          return fullNameTe || fullNameEn;
-                        })
-                        .filter(Boolean)
-                        .join(', ');
+                      // Format Telugu devotee names with family surname once (NO English names!)
+                      const familySurnameTe = receipt.persons.find((p) => p.surname_te)?.surname_te?.trim() || '';
+                      const formattedMembers: string[] = [];
+                      receipt.persons.forEach((p, idx) => {
+                        const sTe = (p.surname_te || '').trim();
+                        let gTe = (p.given_name_te || p.given_name_en || '').trim();
+                        const surCandidate = sTe || familySurnameTe;
+                        if (surCandidate && gTe.startsWith(surCandidate)) {
+                          gTe = gTe.slice(surCandidate.length).replace(/^[\s\-:,]+/, '');
+                        }
+                        if (idx === 0) {
+                          if (familySurnameTe && gTe) formattedMembers.push(`${familySurnameTe} ${gTe}`);
+                          else if (familySurnameTe) formattedMembers.push(familySurnameTe);
+                          else if (gTe) formattedMembers.push(gTe);
+                        } else {
+                          if (gTe) formattedMembers.push(gTe);
+                        }
+                      });
+                      const allNames = formattedMembers.join(', ');
 
                       return (
                         <div key={receipt.id} className="py-2.5 px-2 flex items-start justify-between">
@@ -466,108 +325,6 @@ export const PoojaListPage: React.FC<PoojaListPageProps> = ({ selectedYear, onSe
           </div>
         )}
       </div>
-
-      {/* ── Modal: Import as Excel / CSV ────────────────────────── */}
-      {showImportModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
-              <div className="flex items-center space-x-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
-                <h3 className="text-base font-bold text-gray-900 font-serif">
-                  Import as Excel / CSV (సంకల్పం డేటా దిగుమతి)
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <p className="text-xs text-gray-600">
-                Upload a CSV or Excel export containing columns:{' '}
-                <strong>Book Num</strong>, <strong>Receipt Number</strong>,{' '}
-                <strong>Gothram in Telugu</strong>, <strong>Names in Telugu</strong>.
-              </p>
-
-              {/* Upload Drop Area */}
-              <label className="border-2 border-dashed border-gray-300 hover:border-emerald-600 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-gray-50/50">
-                <Upload className="w-8 h-8 text-emerald-600 mb-2" />
-                <span className="text-xs font-semibold text-gray-800">
-                  {importFileName ? importFileName : 'Click to select CSV / Excel file'}
-                </span>
-                <span className="text-[11px] text-gray-400 mt-1">.csv, .txt, UTF-8 formatted</span>
-                <input
-                  type="file"
-                  accept=".csv,.txt"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-
-              {/* Status / Notice */}
-              {importNotice && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{importNotice}</span>
-                </div>
-              )}
-
-              {/* Preview Rows if parsed */}
-              {importedRows.length > 0 && (
-                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl text-xs divide-y divide-gray-100">
-                  {importedRows.slice(0, 5).map((row, idx) => (
-                    <div key={idx} className="p-2 font-mono flex items-center justify-between">
-                      <span>
-                        Bk #{row.book_number || '-'} • Rcpt #{row.receipt_no}
-                      </span>
-                      <span className="font-telugu text-gray-700 font-bold truncate max-w-[180px]">
-                        {row.gothram_te} • {row.names_te}
-                      </span>
-                    </div>
-                  ))}
-                  {importedRows.length > 5 && (
-                    <div className="p-2 text-center text-[11px] text-gray-400 italic">
-                      + {importedRows.length - 5} more records...
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setShowImportModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExecuteImport}
-                  disabled={importedRows.length === 0 || isImporting}
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 text-white text-xs font-semibold rounded-xl shadow flex items-center space-x-1.5"
-                >
-                  {isImporting ? (
-                    <>
-                      <div className="inline-block animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" />
-                      <span>Importing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Confirm Import ({importedRows.length})</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
